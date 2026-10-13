@@ -13,6 +13,8 @@ ESPHome Bluetooth proxies, Shelly Gen2+ devices or local Bluetooth adapters. Sel
 Ashley Gittins (agittins), MIT licence.**
 
 Roomwise can be installed alongside Bermuda, but only track a given device with one of them.
+Switching from Bermuda is not a migration: settings, calibration, entity ids and history do not
+carry over, and automations need re-pointing. See the README for details.
 
 **This integration sets up the following platforms.**
 

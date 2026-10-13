@@ -35,9 +35,23 @@ template, with code mainly taken from [@Ludeeus](https://github.com/ludeeus)'s
 
 Roomwise uses its own domain (`roomwise`), folder, actions and entities, so it can be installed
 at the same time as Bermuda without either one breaking. **Only track a given device with one of
-them, though.** Both attach their sensors to the same Home Assistant device, so tracking a device
-in both gives you two sets of near-identical sensors (Home Assistant adds `_2` to the second set's
-entity ids) and twice the processing.
+them, though.**
+
+- **Running both costs twice.** Each integration processes every Bluetooth advertisement on its
+  own, so having both installed doubles that work on your Home Assistant host.
+- **They share devices.** Both attach their sensors to the same Home Assistant device, so tracking
+  a device in both gives you two sets of near-identical sensors (Home Assistant adds `_2` to the
+  second set's entity ids).
+
+### Switching from Bermuda is not a migration
+
+Roomwise does not import anything from Bermuda. Your Bermuda settings, calibration (reference
+power, attenuation, per-proxy offsets), selected devices, entity ids and history do **not** carry
+over. Roomwise creates new entities with new ids, so automations, scripts and dashboards that use
+Bermuda's entities need to be re-pointed to the Roomwise ones.
+
+The recommended path is: install Roomwise, set it up for a device or two and compare it with
+Bermuda for a while, then move your automations over and remove Bermuda.
 
 ## What it does
 
@@ -154,10 +168,12 @@ Contributions are welcome. Please read the [contribution guidelines](CONTRIBUTIN
 
 Roomwise is released under the [MIT licence](LICENSE), as is Bermuda.
 
-The files in `custom_components/roomwise/manufacturer_identification/` are copies of the Bluetooth
-SIG's public Assigned Numbers lists (company identifiers and member UUIDs), carried over unchanged
-from Bermuda. They are provided by the Bluetooth SIG under the notice at the top of each file, not
-under the MIT licence, and are used only to show manufacturer names.
+The files in `custom_components/roomwise/manufacturer_identification/` (`company_identifiers.yaml`
+and `member_uuids.yaml`) are copies of the Bluetooth SIG's public
+[Assigned Numbers](https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/) lists,
+carried over unchanged from Bermuda. They are **not** covered by the MIT licence: they are
+Bluetooth SIG data, provided under the Bluetooth SIG's own terms (see the notice kept at the top of
+`member_uuids.yaml` and www.bluetooth.com). Roomwise uses them only to show manufacturer names.
 
 The Bermuda logo and icon images were removed from this repository, since they are Bermuda's
 branding. The screenshots in `img/screenshots/` come from Bermuda and are covered by its MIT licence.
