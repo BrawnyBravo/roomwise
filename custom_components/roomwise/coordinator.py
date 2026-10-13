@@ -766,6 +766,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 device = self._get_or_create_device(bledevice.address)
+                device.async_apply_address_details(bledevice.details)
                 device.process_advertisement(scanner_device, advertisementdata)
 
         # end of for ha_scanner loop

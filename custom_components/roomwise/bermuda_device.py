@@ -205,25 +205,59 @@ class BermudaDevice(dict):
                     self.address_type = BDADDR_TYPE_NOT_MAC48
             elif len(self.address) == 17:
                 top_bits = int(self.address[0:1], 16) >> 2
-                # The two MSBs of the first octet dictate the random type...
-                if top_bits & 0b00:  # First char will be in [0 1 2 3]
+                # The two MSBs of the first octet dictate the random type. These are
+                # EQUALITY tests (they used to be `&`, which classed every random
+                # static address as resolvable and never matched 0b00).
+                #
+                # The address alone cannot tell a public address from a random one;
+                # we assume random until the Bluetooth stack tells us otherwise (see
+                # async_apply_address_details), because rotating addresses are the
+                # ones that need special handling.
+                if top_bits == 0b00:  # First char will be in [0 1 2 3]
                     self.address_type = BDADDR_TYPE_RANDOM_UNRESOLVABLE
-                elif top_bits & 0b01:  # Addresses where the first char will be 4,5,6 or 7
+                elif top_bits == 0b01:  # Addresses where the first char will be 4,5,6 or 7
                     _LOGGER.debug("Identified Resolvable Private (potential IRK source) Address on %s", self.address)
                     self.address_type = BDADDR_TYPE_RANDOM_RESOLVABLE
                     self._coordinator.irk_manager.check_mac(self.address)
-                elif top_bits & 0b10:
-                    self.address_type = "reserved"
-                    _LOGGER.debug("Hey, got one of those reserved MACs, %s", self.address)
-                elif top_bits & 0b11:
+                elif top_bits == 0b10:  # First char in [8 9 a b]
+                    # Reserved for random addresses, so this can only be a public one.
+                    self.address_type = BDADDR_TYPE_OTHER
+                else:  # 0b11, first char in [c d e f]
                     self.address_type = BDADDR_TYPE_RANDOM_STATIC
 
             else:
-                # This is a normal MAC address.
+                # Five colons but not 17 characters: not a well-formed MAC.
                 self.address_type = BDADDR_TYPE_OTHER
-                name, generic = self._coordinator.get_manufacturer_from_id(self.address[:8])
-                if name and (self.manufacturer is None or not generic):
-                    self.manufacturer = name
+
+    def async_apply_address_details(self, details: dict | None) -> None:
+        """
+        Use the Bluetooth stack's own address-type hint for this address, if any.
+
+        A public address whose first character is 4-7 looks exactly like a rotating
+        resolvable private address, so on shape alone it gets pruned after a few
+        minutes unseen, labelled "Random MAC" and run through the IRK resolver. When
+        the stack tells us the address is public, believe it. Only unambiguous hints
+        are used:
+
+        - BlueZ over D-Bus: details["props"]["AddressType"] is "public" or "random".
+        - An integer details["address_type"] of 0, which is public in every encoding
+          in use (ESPHome BLE_ADDR_TYPE_PUBLIC, kernel mgmt BDADDR_BREDR). Values 1
+          and 2 mean different things to different backends, so they are ignored.
+
+        Without a hint the classification from the address shape stands.
+        """
+        if not details or self.address_type not in (
+            BDADDR_TYPE_RANDOM_RESOLVABLE,
+            BDADDR_TYPE_RANDOM_STATIC,
+            BDADDR_TYPE_RANDOM_UNRESOLVABLE,
+        ):
+            return
+        props = details.get("props")
+        bluez_type = props.get("AddressType") if isinstance(props, dict) else None
+        int_type = details.get("address_type")
+        if bluez_type == "public" or (int_type == 0 and not isinstance(int_type, bool)):
+            _LOGGER.debug("Bluetooth stack reports %s as a public address", self.address)
+            self.address_type = BDADDR_TYPE_OTHER
 
     @property
     def is_scanner(self):
