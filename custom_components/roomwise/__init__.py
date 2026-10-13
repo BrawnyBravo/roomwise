@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -135,6 +136,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> 
     """Handle removal of an entry."""
     if unload_result := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         _LOGGER.debug("Unloaded platforms.")
+        # The coordinator registers dump_devices bound to itself. Remove it once no
+        # other entry is still loaded, so the service doesn't keep a dead
+        # coordinator (and all its device data) alive. A reload registers it again.
+        if not any(
+            other.entry_id != entry.entry_id and other.state is ConfigEntryState.LOADED
+            for other in hass.config_entries.async_entries(DOMAIN)
+        ):
+            hass.services.async_remove(DOMAIN, "dump_devices")
     return unload_result
 
 
