@@ -6,9 +6,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import aiofiles
 import voluptuous as vol
 import yaml
 from bluetooth_data_tools import monotonic_time_coarse
@@ -113,6 +113,22 @@ Cancellable = Callable[[], None]
 # so we're just disabling it for the whole file.
 # https://github.com/astral-sh/ruff/issues/4244
 # ruff: noqa: PLR1730
+
+
+# The C loader parses the manufacturer tables several times faster.
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _load_manufacturer_ids(member_path: str, company_path: str) -> tuple[dict[int, str], dict[int, str]]:
+    """Read the Bluetooth SIG name tables. Blocking: run in the executor."""
+    with Path(member_path).open(encoding="utf-8") as f:
+        mi_yaml = yaml.load(f, Loader=YAML_LOADER)["uuids"]  # noqa: S506 - safe loader
+    with Path(company_path).open(encoding="utf-8") as f:
+        ci_yaml = yaml.load(f, Loader=YAML_LOADER)["company_identifiers"]  # noqa: S506 - safe loader
+    return (
+        {member["uuid"]: member["name"] for member in mi_yaml},
+        {member["value"]: member["name"] for member in ci_yaml},
+    )
 
 
 class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
@@ -380,20 +396,18 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         """Import yaml files containing manufacturer name mappings."""
         try:
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/member_uuids.yaml
-            file_path = self.hass.config.path(
+            member_path = self.hass.config.path(
                 f"custom_components/{DOMAIN}/manufacturer_identification/member_uuids.yaml"
             )
-            async with aiofiles.open(file_path) as f:
-                mi_yaml = yaml.safe_load(await f.read())["uuids"]
-            self.member_uuids: dict[int, str] = {member["uuid"]: member["name"] for member in mi_yaml}
-
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/company_identifiers/company_identifiers.yaml
-            file_path = self.hass.config.path(
+            company_path = self.hass.config.path(
                 f"custom_components/{DOMAIN}/manufacturer_identification/company_identifiers.yaml"
             )
-            async with aiofiles.open(file_path) as f:
-                ci_yaml = yaml.safe_load(await f.read())["company_identifiers"]
-            self.company_uuids: dict[int, str] = {member["value"]: member["name"] for member in ci_yaml}
+            # Reading and parsing ~200 KB of YAML blocks for a noticeable time, so
+            # it runs in the executor rather than on the event loop.
+            self.member_uuids, self.company_uuids = await self.hass.async_add_executor_job(
+                _load_manufacturer_ids, member_path, company_path
+            )
         finally:
             # Ensure that an issue reading these files (which are optional, really) doesn't stop the whole show.
             self._waitingfor_load_manufacturer_ids = False
