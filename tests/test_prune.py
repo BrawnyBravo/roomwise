@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import custom_components.roomwise.coordinator as coordinator_module
 from custom_components.roomwise.const import BDADDR_TYPE_RANDOM_RESOLVABLE
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
@@ -78,3 +80,32 @@ def test_prune_rotated_private_ble_source_does_not_raise_and_cleans_adverts(monk
     assert meta.address in devices
     assert meta.metadevice_sources == [new]
     assert (old, "scanner1") not in meta.adverts
+
+
+@pytest.mark.parametrize(("prunable_count", "quota"), [(2, 1), (0, 1), (3, 4), (3, 3), (3, 2), (3, 5), (5, 1)])
+def test_prune_quota_prunes_oldest_up_to_shortfall(monkeypatch, prunable_count, quota):
+    """Over quota, prune exactly the shortfall (or all prunables if fewer), oldest first.
+
+    The quota path indexed ``sorted_addresses[shortfall - 1]`` (IndexError when there
+    were fewer prunables than the shortfall) and sliced one short of the shortfall.
+    """
+    monkeypatch.setattr(coordinator_module, "monotonic_time_coarse", lambda: NOW)
+    monkeypatch.setattr(coordinator_module, "PRUNE_MAX_COUNT", quota)
+    devices = {
+        "tracked": _dev("tracked", NOW, "static", create_sensor=True),
+        "also_tracked": _dev("also_tracked", NOW, "static", create_sensor=True),
+    }
+    # Fresh static addresses: not stale, so only prunable to meet quota.
+    # Inserted newest first so the test also checks the oldest go first.
+    for index in reversed(range(prunable_count)):
+        address = f"c0:00:00:00:00:{index:02x}"
+        devices[address] = _dev(address, NOW - 100 + index, "static")
+    coordinator = _coordinator(devices)
+
+    BermudaDataUpdateCoordinator.prune_devices(coordinator, force_pruning=True)
+
+    shortfall = prunable_count + 2 - quota
+    prune_count = min(prunable_count, max(0, shortfall))
+    assert set(devices) == {"tracked", "also_tracked"} | {
+        f"c0:00:00:00:00:{index:02x}" for index in range(prune_count, prunable_count)
+    }
