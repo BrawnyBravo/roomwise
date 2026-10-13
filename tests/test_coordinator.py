@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from custom_components.bermuda.coordinator import BermudaDataUpdateCoordinator
+from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
 
 def test_handle_devreg_malformed_identifier():

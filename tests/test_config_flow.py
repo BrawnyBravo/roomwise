@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bermuda.const import DOMAIN
-from custom_components.bermuda.const import NAME
+from custom_components.roomwise.const import DOMAIN
+from custom_components.roomwise.const import NAME
 
 # from .const import MOCK_OPTIONS
 from .const import MOCK_CONFIG

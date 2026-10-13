@@ -74,8 +74,8 @@
           "remoteRoot": "/usr/src/homeassistant"
         },
         {
-          "localRoot": "/workspaces/repo-bermuda/custom_components/bermuda",
-          "remoteRoot": "/config/custom_components/bermuda"
+          "localRoot": "/workspaces/repo-roomwise/custom_components/roomwise",
+          "remoteRoot": "/config/custom_components/roomwise"
         }
       ]
     }

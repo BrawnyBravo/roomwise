@@ -11,13 +11,13 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bermuda.const import DOMAIN
-from custom_components.bermuda.const import NAME
+from custom_components.roomwise.const import DOMAIN
+from custom_components.roomwise.const import NAME
 
 # from .const import MOCK_OPTIONS
 from .const import MOCK_CONFIG
 
-# from custom_components.bermuda import BermudaDataUpdateCoordinator
+# from custom_components.roomwise import BermudaDataUpdateCoordinator
 
 
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -58,7 +58,7 @@ def skip_notifications_fixture():
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
-    with patch("custom_components.bermuda.BermudaDataUpdateCoordinator.async_refresh"):
+    with patch("custom_components.roomwise.BermudaDataUpdateCoordinator.async_refresh"):
         yield
 
 
@@ -66,7 +66,7 @@ def bypass_get_data_fixture():
 def skip_yaml_data_load():
     """Skip loading yaml data files for bluetooth manufacturers"""
     # because I have *NO* idea how to make it work. Contribs welcome!
-    with patch("custom_components.bermuda.BermudaDataUpdateCoordinator.async_load_manufacturer_ids"):
+    with patch("custom_components.roomwise.BermudaDataUpdateCoordinator.async_load_manufacturer_ids"):
         yield
 
 
@@ -77,7 +77,7 @@ def skip_yaml_data_load():
 def error_get_data_fixture():
     """Simulate error when retrieving data from API."""
     with patch(
-        "custom_components.bermuda.BermudaDataUpdateCoordinator.async_refresh",
+        "custom_components.roomwise.BermudaDataUpdateCoordinator.async_refresh",
         side_effect=Exception,
     ):
         yield
@@ -90,7 +90,7 @@ def error_get_data_fixture():
 # @pytest.fixture(autouse=True)
 # def mock_service_info():
 #     """Simulate a discovered advertisement for config_flow"""
-#     with patch("custom_components.bermuda.bluetooth.async_discovered_service_info"):
+#     with patch("custom_components.roomwise.bluetooth.async_discovered_service_info"):
 #         return SERVICE_INFOS
 
 

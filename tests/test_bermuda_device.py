@@ -5,8 +5,8 @@ Tests for BermudaDevice class in bermuda_device.py.
 import pytest
 from unittest.mock import MagicMock, patch
 from homeassistant.components.bluetooth import BaseHaScanner, BaseHaRemoteScanner
-from custom_components.bermuda.bermuda_device import BermudaDevice
-from custom_components.bermuda.const import ICON_DEFAULT_AREA, ICON_DEFAULT_FLOOR
+from custom_components.roomwise.bermuda_device import BermudaDevice
+from custom_components.roomwise.const import ICON_DEFAULT_AREA, ICON_DEFAULT_FLOOR
 
 
 @pytest.fixture

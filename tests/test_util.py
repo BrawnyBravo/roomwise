@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from math import floor
 
-from custom_components.bermuda import util
+from custom_components.roomwise import util
 
 
 def test_mac_math_offset():

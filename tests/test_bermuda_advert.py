@@ -4,8 +4,8 @@ Tests for BermudaAdvert class in bermuda_advert.py.
 
 import pytest
 from unittest.mock import MagicMock, patch
-from custom_components.bermuda.bermuda_advert import BermudaAdvert
-from custom_components.bermuda.bermuda_device import BermudaDevice
+from custom_components.roomwise.bermuda_advert import BermudaAdvert
+from custom_components.roomwise.bermuda_device import BermudaDevice
 from bleak.backends.scanner import AdvertisementData
 
 

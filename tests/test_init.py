@@ -7,8 +7,8 @@ from homeassistant.core import HomeAssistant
 # from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bermuda.const import DOMAIN, IrkTypes
-from custom_components.bermuda.coordinator import BermudaDataUpdateCoordinator
+from custom_components.roomwise.const import DOMAIN, IrkTypes
+from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
 from .const import MOCK_CONFIG
 from homeassistant.config_entries import ConfigEntryState
