@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Bermuda BLE Trilateration",
-        "description": "Hvis du trenger hjep til konfigurasjon ta en titt her: https://github.com/agittins/bermuda",
+        "title": "Roomwise",
+        "description": "Hvis du trenger hjep til konfigurasjon ta en titt her: https://github.com/BrawnyBravo/roomwise",
         "data": {
           "username": "Brukernavn",
           "password": "Passord"

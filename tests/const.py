@@ -1,4 +1,4 @@
-"""Constants for Bermuda BLE Trilateration tests."""
+"""Constants for Roomwise tests."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""General helper utilities for Bermuda."""
+"""General helper utilities for Roomwise."""
 
 from __future__ import annotations
 

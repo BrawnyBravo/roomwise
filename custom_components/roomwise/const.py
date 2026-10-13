@@ -1,4 +1,4 @@
-"""Constants for Bermuda BLE Trilateration."""
+"""Constants for Roomwise."""
 
 # Base component constants
 from __future__ import annotations
@@ -11,8 +11,8 @@ from homeassistant.const import Platform
 
 from .log_spam_less import BermudaLogSpamLess
 
-NAME = "Bermuda BLE Trilateration"
-DOMAIN = "bermuda"
+NAME = "Roomwise"
+DOMAIN = "roomwise"
 DOMAIN_DATA = f"{DOMAIN}_data"
 # Version gets updated by github workflow during release.
 # The version in the repository should always be 0.0.0 to reflect
@@ -22,7 +22,7 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 VERSION = "0.0.0"
 
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
-ISSUE_URL = "https://github.com/agittins/bermuda/issues"
+ISSUE_URL = "https://github.com/BrawnyBravo/roomwise/issues"
 
 # Icons
 ICON = "mdi:format-quote-close"

@@ -1,4 +1,4 @@
-"""Test Bermuda BLE Trilateration setup process."""
+"""Test Roomwise setup process."""
 
 from __future__ import annotations
 

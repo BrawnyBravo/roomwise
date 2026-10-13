@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Bermuda BLE Trilateration",
-        "description": "If you need help with the configuration have a look at our [GitHub page](https://github.com/agittins/bermuda)",
+        "title": "Roomwise",
+        "description": "If you need help with the configuration have a look at our [GitHub page](https://github.com/BrawnyBravo/roomwise)",
         "data": {
           "username": "Username",
           "password": "Password"
@@ -20,13 +20,13 @@
   "options": {
     "error": {
       "some_active": "You have at least some active devices, this is good.",
-      "no_scanners": "You need to configure some bluetooth scanners before Bermuda will have anything to work with. \nAny one of esphome bluetooth_proxy, Shelly bluetooth proxy or local bluetooth adaptor should get you started.",
-      "no_devices": "No bluetooth devices are actively being reported from your scanners. \nYou will need to solve this before Bermuda can be of much help."
+      "no_scanners": "You need to configure some bluetooth scanners before Roomwise will have anything to work with. \nAny one of esphome bluetooth_proxy, Shelly bluetooth proxy or local bluetooth adaptor should get you started.",
+      "no_devices": "No bluetooth devices are actively being reported from your scanners. \nYou will need to solve this before Roomwise can be of much help."
     },
     "step": {
       "init": {
-        "title": "Configure Bermuda",
-        "description": "Bermuda can currently see:\n- {device_counter_active} active out of {device_counter_devices} bluetooth devices.\n- {scanner_counter_active} active out of {scanner_counter_scanners} bluetooth scanner devices.\n\n{status}"
+        "title": "Configure Roomwise",
+        "description": "Roomwise can currently see:\n- {device_counter_active} active out of {device_counter_devices} bluetooth devices.\n- {scanner_counter_active} active out of {scanner_counter_scanners} bluetooth scanner devices.\n\n{status}"
       },
       "globalopts": {
         "title": "Global settings",
@@ -52,7 +52,7 @@
       },
       "selectdevices": {
         "title": "Select Devices",
-        "description": "Choose which devices you wish to track. If no devices appear below, then Bermuda is not seeing any data coming from Bluetooth scanners. Ensure you have an esphome ble_proxy device, Shelly devices with bluetooth proxy configured or a local bluetooth adaptor."
+        "description": "Choose which devices you wish to track. If no devices appear below, then Roomwise is not seeing any data coming from Bluetooth scanners. Ensure you have an esphome ble_proxy device, Shelly devices with bluetooth proxy configured or a local bluetooth adaptor."
       },
       "calibration1_global": {
         "title": "Calibration 1: Global",
@@ -117,7 +117,7 @@
   "issues": {
     "scanner_without_area": {
       "title": "Some Bluetooth Proxies don't have an AREA",
-      "description": "Bermuda requires all bluetooth proxies to have a valid area assigned in order to work correctly. Assign an area by visiting each proxy's device page (via `Devices and Services`), and click the pencil icon in the top-right to assign an area. The following proxies are missing an area assignment:\n\n{scannerlist}"
+      "description": "Roomwise requires all bluetooth proxies to have a valid area assigned in order to work correctly. Assign an area by visiting each proxy's device page (via `Devices and Services`), and click the pencil icon in the top-right to assign an area. The following proxies are missing an area assignment:\n\n{scannerlist}"
     }
   }
 }

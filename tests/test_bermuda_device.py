@@ -51,7 +51,7 @@ def bermuda_scanner(mock_coordinator):
 def test_bermuda_device_initialization(bermuda_device):
     """Test BermudaDevice initialization."""
     assert bermuda_device.address == "aa:bb:cc:dd:ee:ff"
-    assert bermuda_device.name.startswith("bermuda_")
+    assert bermuda_device.name.startswith("roomwise_")
     assert bermuda_device.area_icon == ICON_DEFAULT_AREA
     assert bermuda_device.floor_icon == ICON_DEFAULT_FLOOR
     assert bermuda_device.zone == "not_home"

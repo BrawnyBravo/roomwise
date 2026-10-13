@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Bermuda bluetooth data."""
+"""DataUpdateCoordinator for Roomwise bluetooth data."""
 
 from __future__ import annotations
 

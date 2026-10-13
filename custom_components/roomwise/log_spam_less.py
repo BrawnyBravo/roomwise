@@ -1,4 +1,4 @@
-"""Custom logging class for Bermuda."""
+"""Custom logging class for Roomwise."""
 
 from __future__ import annotations
 

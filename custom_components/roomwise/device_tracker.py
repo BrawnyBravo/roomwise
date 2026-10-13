@@ -1,4 +1,4 @@
-"""Create device_tracker entities for Bermuda devices."""
+"""Create device_tracker entities for Roomwise devices."""
 
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -68,7 +68,7 @@ class BermudaDeviceTracker(BermudaEntity, BaseScannerEntity):
 
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_name = "Bermuda Tracker"
+    _attr_name = "Roomwise Tracker"
     _attr_source_type = SourceType.BLUETOOTH_LE
 
     @property

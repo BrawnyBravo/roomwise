@@ -21,13 +21,13 @@ def test_handle_devreg_malformed_identifier():
     The handler must skip malformed identifiers, still process valid ones,
     and run to completion.
     """
-    # A device with a non-Bermuda connection (so we reach the identifier
-    # branch), one malformed identifier and one valid Bermuda identifier.
+    # A device with a non-Roomwise connection (so we reach the identifier
+    # branch), one malformed identifier and one valid Roomwise identifier.
     device_entry = SimpleNamespace(
         connections={("mac", "AA:BB:CC:DD:EE:FF")},
         identifiers={
             ("plejd", "D", "8", "9", "D", "F", "D", "A"),  # malformed: not a 2-tuple
-            ("bermuda", "aa:bb:cc:dd:ee:ff"),  # valid (domain, id)
+            ("roomwise", "aa:bb:cc:dd:ee:ff"),  # valid (domain, id)
         },
         name_by_user=None,
     )

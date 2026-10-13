@@ -1,4 +1,4 @@
-"""Global fixtures for Bermuda BLE Trilateration integration."""
+"""Global fixtures for Roomwise integration."""
 
 from __future__ import annotations
 

@@ -218,6 +218,6 @@ class BermudaGlobalEntity(CoordinatorEntity):
     def device_info(self):
         """Implementing this creates an entry in the device registry."""
         return {
-            "identifiers": {(DOMAIN, "BERMUDA_GLOBAL")},
-            "name": "Bermuda Global",
+            "identifiers": {(DOMAIN, "ROOMWISE_GLOBAL")},
+            "name": "Roomwise Global",
         }

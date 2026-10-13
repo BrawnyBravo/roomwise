@@ -1,8 +1,11 @@
 """
-Custom integration to integrate Bermuda BLE Trilateration with Home Assistant.
+Roomwise: Bluetooth room presence for Home Assistant.
+
+Roomwise is built on Bermuda BLE Trilateration by Ashley Gittins
+(https://github.com/agittins/bermuda), MIT licence.
 
 For more details about this integration, please refer to
-https://github.com/agittins/bermuda
+https://github.com/BrawnyBravo/roomwise
 """
 
 from __future__ import annotations

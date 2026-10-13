@@ -1,4 +1,4 @@
-"""Binary sensor platform for Bermuda BLE Trilateration."""
+"""Binary sensor platform for Roomwise."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ async def async_setup_entry(hass, entry, async_add_devices):
 
 
 class BermudaBinarySensor(BermudaEntity, BinarySensorEntity):
-    """bermuda binary_sensor class."""
+    """Roomwise binary_sensor class."""
 
     @property
     def name(self):
