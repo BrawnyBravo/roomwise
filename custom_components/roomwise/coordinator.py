@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -94,7 +93,7 @@ from .const import (
     SIGNAL_SCANNERS_CHANGED,
     UPDATE_INTERVAL,
 )
-from .util import mac_explode_formats, mac_norm
+from .util import mac_explode_formats, mac_norm, redact_addresses, snapshot_data
 
 if TYPE_CHECKING:
     from habluetooth import BluetoothServiceInfoBleak
@@ -170,12 +169,6 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         #
         # match/replacement pairs for redacting addresses
         self.redactions: dict[str, str] = {}
-        # Any remaining MAC addresses will be replaced with this. We define it here
-        # so we can compile it once. MAC addresses may have [:_-] separators.
-        self._redact_generic_re = re.compile(
-            r"(?P<start>[0-9A-Fa-f]{2})[:_-]([0-9A-Fa-f]{2}[:_-]){4}(?P<end>[0-9A-Fa-f]{2})"
-        )
-        self._redact_generic_sub = r"\g<start>:xx:xx:xx:xx:\g<end>"
 
         self.stamp_redactions_expiry: float | None = None
 
@@ -1666,7 +1659,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
         if redact:
             _stamp_redact = monotonic_time_coarse()
-            out = cast("ServiceResponse", self.redact_data(out))
+            out = cast("ServiceResponse", await self.async_redact_data(out))
             _stamp_redact_elapsed = monotonic_time_coarse() - _stamp_redact
             if _stamp_redact_elapsed > 3:  # It should be fast now.
                 _LOGGER.warning("Dump devices redaction took %2f seconds", _stamp_redact_elapsed)
@@ -1739,37 +1732,25 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
     def redact_data(self, data, first_recursion=True):
         """
-        Wash any collection of data of any MAC addresses.
+        Wash any collection of data of any MAC addresses, IRKs and iBeacon ids.
 
-        Uses the redaction list of substitutions if already created, then
-        washes any remaining mac-like addresses. This routine is recursive,
-        so if you're changing it bear that in mind!
+        Synchronous: fine for small data. For diagnostics-sized data use
+        async_redact_data, which does the heavy part in an executor job.
         """
         if first_recursion:
-            # On first/outer call, refresh the redaction list to ensure
-            # we don't let any new addresses slip through. Might be expensive
-            # on first call, but will be much cheaper for subsequent calls.
+            # Refresh the redaction list so no new addresses slip through.
             self.redaction_list_update()
-            first_recursion = False
+        return redact_addresses(data, self.redactions)
 
-        if isinstance(data, str):  # Base Case
-            datalower = data.lower()
-            # the end of the recursive wormhole, do the actual work:
-            if datalower in self.redactions:
-                # Full string match, a quick short-circuit
-                data = self.redactions[datalower]
-            else:
-                # Search for any of the redaction strings in the data.
-                for find, fix in list(self.redactions.items()):
-                    if find in datalower:
-                        data = datalower.replace(find, fix)
-                        # don't break out because there might be multiple fixes required.
-            # redactions done, now replace any remaining MAC addresses
-            # We are only looking for xx:xx:xx... format.
-            return self._redact_generic_re.sub(self._redact_generic_sub, data)
-        elif isinstance(data, dict):
-            return {self.redact_data(k, False): self.redact_data(v, False) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [self.redact_data(v, False) for v in data]
-        else:  # Base Case
-            return data
+    async def async_redact_data(self, data):
+        """
+        Redact data without blocking the event loop.
+
+        The redaction table refresh and a copy of the data's containers happen
+        here on the loop (both linear and quick), so the executor job never sees
+        a dict the loop is changing. The per-string work runs in the executor.
+        """
+        self.redaction_list_update()
+        snapshot = snapshot_data(data)
+        redactions = dict(self.redactions)
+        return await self.hass.async_add_executor_job(redact_addresses, snapshot, redactions)

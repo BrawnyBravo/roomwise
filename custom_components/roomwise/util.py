@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
+from typing import Any
 
 
 @lru_cache(64)
@@ -123,3 +125,79 @@ def clean_charbuf(instring: str | None) -> str:
     if instring is not None:
         return instring.strip(" \t\r\n\x00").split("\0")[0]
     return ""
+
+
+# One pass finds every address-like token in a string: a MAC with any one of the
+# separators ":", "-", "_" or "." (used consistently), a 32-hex IRK or iBeacon UUID
+# (optionally followed by an iBeacon "_major_minor"), or a bare 12-hex MAC. Tokens
+# must not be part of a longer run of hex digits.
+_REDACT_TOKEN_RE = re.compile(
+    r"(?<![0-9a-f])(?:"
+    r"(?P<mac>[0-9a-f]{2}(?P<sep>[:._-])(?:[0-9a-f]{2}(?P=sep)){4}[0-9a-f]{2})"
+    r"|(?P<hex32>[0-9a-f]{32})(?P<suffix>_[0-9a-f]*_[0-9a-f]*)?"
+    r"|(?P<bare>[0-9a-f]{12})"
+    r")(?![0-9a-f])",
+    re.IGNORECASE,
+)
+
+
+def snapshot_data(data: Any) -> Any:
+    """
+    Copy the containers (dict, list, tuple, set) of a data structure.
+
+    Leaves are shared, containers are new. Use on the event loop before handing
+    the data to an executor job, so the job never iterates a live dict or set
+    that the loop is changing.
+    """
+    if isinstance(data, dict):
+        return {k: snapshot_data(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [snapshot_data(v) for v in data]
+    if isinstance(data, (tuple, set, frozenset)):
+        return type(data)(snapshot_data(v) for v in data)
+    return data
+
+
+def redact_addresses(data: Any, redactions: dict[str, str]) -> Any:
+    """
+    Return a copy of data with every MAC address, IRK and iBeacon id redacted.
+
+    redactions maps lower-case address strings (in every format we emit) to
+    stable pseudonyms. Each address-like token found in a string is looked up in
+    it; tokens not in the table are still redacted generically. The cost is
+    linear in the size of the data (one regex pass per string plus a dict lookup
+    per token), regardless of how many entries the table holds.
+
+    Pure function with no shared state, so it can run in an executor job.
+    """
+
+    def _token(match: re.Match[str]) -> str:
+        token = match.group(0).lower()
+        if (fix := redactions.get(token)) is not None:
+            return fix
+        if (hex32 := match.group("hex32")) is not None:
+            suffix = match.group("suffix") or ""
+            if (fix := redactions.get(hex32.lower())) is not None:
+                return f"{fix}{suffix}"
+            # Unknown IRK / UUID: keep the first 4 chars, as the table entries do.
+            return f"{token[:4]}::REDACTED{suffix}"
+        # Unknown MAC (any format).
+        mac = match.group("mac") or match.group("bare")
+        return f"{mac[:2].lower()}:xx:xx:xx:xx:{mac[-2:].lower()}"
+
+    def _redact(item: Any) -> Any:
+        if isinstance(item, str):
+            if (fix := redactions.get(item.lower())) is not None:
+                # Whole-string match (also covers table entries that are not
+                # address-shaped, which the token pattern cannot find).
+                return fix
+            return _REDACT_TOKEN_RE.sub(_token, item)
+        if isinstance(item, dict):
+            return {_redact(k): _redact(v) for k, v in item.items()}
+        if isinstance(item, list):
+            return [_redact(v) for v in item]
+        if isinstance(item, (tuple, set, frozenset)):
+            return type(item)(_redact(v) for v in item)
+        return item
+
+    return _redact(data)

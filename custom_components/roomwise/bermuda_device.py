@@ -846,6 +846,15 @@ class BermudaDevice(dict):
         """Convert class to serialisable dict for dump_devices."""
         out = {}
         for var, val in vars(self).items():
+            if var == "options":
+                # The coordinator's options, identical for every device. Dumping a
+                # copy per device multiplied the dump (and the redaction work).
+                continue
+            if var == "stamps":
+                # A scanner's live per-device timestamp table from the Bluetooth
+                # stack: one entry per device it has heard. Only the size is useful.
+                out[var] = len(val) if val is not None else None
+                continue
             if val is None:
                 # Catch the Nones first, as otherwise they might match some other objects below if
                 # they are None (like self._hascanner), which will prevent them showing at all.
