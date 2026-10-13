@@ -14,7 +14,7 @@ export VENV=/home/vscode/.local/ha-venv
 # instead:
 # export VENV=venv
 
-# Hopefully prioritise finding bermuda sources in our
+# Hopefully prioritise finding roomwise sources in our
 # working dir while debugging, rather than in the HA tree.
 export PYTHONPATH="${PWD}/custom_components:${PYTHONPATH}"
 
