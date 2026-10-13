@@ -908,10 +908,19 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # Prune_list is now ready to action. It contains no keepers, and is already
         # expanded if necessary to meet quota, as much as we can.
 
-        # Prune the source devices
+        # Prune the source devices.
+        #
+        # prune_list can legitimately contain the same address twice: it is
+        # appended to from independent sweeps whose selections overlap. A stale
+        # IRK source older than PRUNE_TIME_KNOWN_IRK is picked up by both the
+        # metadevice-source sweep and the unknown-IRK sweep. Deleting it twice
+        # used to raise KeyError, aborting the whole update cycle and skipping
+        # the source/advert clean-up below. De-duplicate (keeping order for the
+        # debug log) and use pop() so a repeat is harmless.
+        prune_list = list(dict.fromkeys(prune_list))
         for device_address in prune_list:
             _LOGGER.debug("Acting on prune list for %s", device_address)
-            del self.devices[device_address]
+            self.devices.pop(device_address, None)
 
         # Clean out the scanners dicts in metadevices and scanners
         # (scanners will have entries if they are also beacons, although
