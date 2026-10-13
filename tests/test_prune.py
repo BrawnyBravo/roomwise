@@ -7,7 +7,13 @@ from types import SimpleNamespace
 import pytest
 
 import custom_components.roomwise.coordinator as coordinator_module
-from custom_components.roomwise.const import BDADDR_TYPE_RANDOM_RESOLVABLE
+from custom_components.roomwise.const import (
+    BDADDR_TYPE_NOT_MAC48,
+    BDADDR_TYPE_OTHER,
+    BDADDR_TYPE_RANDOM_RESOLVABLE,
+    METADEVICE_IBEACON_DEVICE,
+    PRUNE_TIME_DEFAULT,
+)
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
 NOW = 100_000.0
@@ -109,3 +115,63 @@ def test_prune_quota_prunes_oldest_up_to_shortfall(monkeypatch, prunable_count, 
     assert set(devices) == {"tracked", "also_tracked"} | {
         f"c0:00:00:00:00:{index:02x}" for index in range(prune_count, prunable_count)
     }
+
+
+def _beacon(address, source, last_seen, tracked=False):
+    return _dev(
+        address,
+        last_seen,
+        BDADDR_TYPE_NOT_MAC48,
+        metadevice_type={METADEVICE_IBEACON_DEVICE},
+        create_sensor=tracked,
+        metadevice_sources=[source],
+    )
+
+
+def test_stale_untracked_ibeacon_metadevice_and_source_are_pruned(monkeypatch):
+    """An untracked iBeacon unseen for a day goes, with its metadevice and source.
+
+    Nothing ever removed entries from ``metadevices``, and the source-keeper sweep
+    always keeps a metadevice's newest source, so every iBeacon ever heard stayed
+    in memory for good. Fresh or tracked beacons must stay.
+    """
+    monkeypatch.setattr(coordinator_module, "monotonic_time_coarse", lambda: NOW)
+    old = NOW - PRUNE_TIME_DEFAULT - 10
+    stale_src = _dev("11:22:33:44:55:01", old, BDADDR_TYPE_OTHER)
+    fresh_src = _dev("11:22:33:44:55:02", NOW - 10, BDADDR_TYPE_OTHER)
+    tracked_src = _dev("11:22:33:44:55:03", old, BDADDR_TYPE_OTHER)
+    stale = _beacon("aaaa_1_1", stale_src.address, old)
+    fresh = _beacon("bbbb_1_1", fresh_src.address, NOW - 10)
+    tracked = _beacon("cccc_1_1", tracked_src.address, old, tracked=True)
+    devices = {d.address: d for d in (stale_src, fresh_src, tracked_src, stale, fresh, tracked)}
+    metadevices = {d.address: d for d in (stale, fresh, tracked)}
+    coordinator = _coordinator(devices, metadevices)
+
+    BermudaDataUpdateCoordinator.prune_devices(coordinator, force_pruning=True)
+
+    assert set(metadevices) == {"bbbb_1_1", "cccc_1_1"}
+    assert "aaaa_1_1" not in devices
+    # The stale beacon's source is no longer a keeper, so it prunes as a stale MAC.
+    assert stale_src.address not in devices
+    assert fresh_src.address in devices
+    assert tracked_src.address in devices
+
+
+def test_general_sweep_never_prunes_a_registered_metadevice(monkeypatch):
+    """The general sweep must skip anything registered in ``metadevices``.
+
+    ``metadevices`` is keyed by address, but the sweep tested the device object
+    against it, which never matches, so a registered metadevice could be deleted
+    from ``devices`` while staying in ``metadevices`` (the two drifting apart).
+    """
+    monkeypatch.setattr(coordinator_module, "monotonic_time_coarse", lambda: NOW)
+    # A non-iBeacon metadevice whose address looks like a MAC and is a day stale.
+    meta = _dev("aa:bb:cc:dd:ee:01", NOW - PRUNE_TIME_DEFAULT - 10, BDADDR_TYPE_OTHER, metadevice_type={"other"})
+    devices = {meta.address: meta}
+    metadevices = {meta.address: meta}
+    coordinator = _coordinator(devices, metadevices)
+
+    BermudaDataUpdateCoordinator.prune_devices(coordinator, force_pruning=True)
+
+    assert meta.address in metadevices
+    assert meta.address in devices
