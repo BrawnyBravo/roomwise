@@ -53,6 +53,7 @@ from .const import (
     DEFAULT_REF_POWER,
     DOMAIN,
     DOMAIN_PRIVATE_BLE_DEVICE,
+    METADEVICE_TYPE_PRIVATE_BLE_SOURCE,
 )
 from .util import mac_math_offset
 
@@ -105,17 +106,24 @@ MOVING_DEVICE_WORDS = (
     "collar",
 )
 
-# Address types that rotate or that the integration builds from moving things.
-UNUSABLE_ADDRESS_TYPES = {
+# Never landmarks: beacons and private BLE devices are built by the integration
+# from things that move, and non-MAC48 ids are not radio addresses.
+NEVER_LANDMARK_TYPES = {
     ADDR_TYPE_IBEACON,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
-    BDADDR_TYPE_RANDOM_RESOLVABLE,
-    BDADDR_TYPE_RANDOM_UNRESOLVABLE,
     BDADDR_TYPE_NOT_MAC48,
 }
 
-# Fixed addresses: public (OTHER) or random-static. Everything else rotates.
+# Fixed addresses: public (OTHER) or random-static.
 STABLE_ADDRESS_TYPES = {BDADDR_TYPE_OTHER, BDADDR_TYPE_RANDOM_STATIC}
+
+# Classed as rotating from the address shape alone. A public address whose
+# first hex digit is 0-7 looks exactly like these when the Bluetooth stack gives
+# no hint, so such an address is still usable once it has been heard, unchanged,
+# for longer than a private address lives (about 15 minutes by the spec).
+SHAPE_ROTATING_TYPES = {BDADDR_TYPE_RANDOM_RESOLVABLE, BDADDR_TYPE_RANDOM_UNRESOLVABLE}
+STEADY_MIN_AGE = 20 * 60  # seconds the same address must have been heard
+STEADY_MAX_GAP = 120  # ...and heard within this many seconds
 
 # A WiFi/Ethernet MAC in the registry often sits next to the device's Bluetooth
 # MAC. Same idea the coordinator uses for proxies (WIFI+2, ETHER-1).
@@ -139,11 +147,43 @@ def _looks_mobile(device: dr.DeviceEntry) -> bool:
     return any(word in text for word in MOVING_DEVICE_WORDS)
 
 
-def _usable_address(coordinator: BermudaDataUpdateCoordinator, address: str) -> bool:
+def _heard_steadily(device, now: float) -> bool:
+    """The same address has been heard for longer than any private address lives, and lately."""
+    first_seen = getattr(device, "first_seen", None)
+    last_seen = getattr(device, "last_seen", 0) or 0
+    return first_seen is not None and now - first_seen >= STEADY_MIN_AGE and now - last_seen <= STEADY_MAX_GAP
+
+
+def _fixed_address(device, now: float) -> bool:
+    """
+    Could this address belong to a device that never moves?
+
+    Public and random-static addresses: yes. Addresses that look rotating from
+    their shape: only when heard steadily (they may be public addresses with no
+    hint from the Bluetooth stack). Never: beacons, private BLE devices and the
+    current address of a known private BLE device (an IRK match, a phone or watch).
+    """
+    if device.is_scanner or device.address_type in NEVER_LANDMARK_TYPES:
+        return False
+    if METADEVICE_TYPE_PRIVATE_BLE_SOURCE in (getattr(device, "metadevice_type", None) or ()):
+        return False
+    if device.address_type in STABLE_ADDRESS_TYPES:
+        return True
+    if device.address_type in SHAPE_ROTATING_TYPES:
+        return _heard_steadily(device, now)
+    return False
+
+
+def _usable_address(coordinator: BermudaDataUpdateCoordinator, address: str, now: float | None = None) -> bool:
     known = coordinator.devices.get(address)
     if known is None:
         return False
-    return known.address_type not in UNUSABLE_ADDRESS_TYPES and not known.is_scanner
+    return _fixed_address(known, monotonic_time_coarse() if now is None else now)
+
+
+def _name_looks_mobile(name: str | None) -> bool:
+    text = (name or "").lower()
+    return any(word in text for word in MOVING_DEVICE_WORDS)
 
 
 def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> Discovery:
@@ -362,6 +402,12 @@ def candidates(
     """
     Fixed-address devices heard recently and steadily, for the manual landmark list.
 
+    Address class alone is not trusted: an address that looks rotating is
+    offered when the same address has been heard for longer than a private
+    address lives (see _fixed_address). Rotating private addresses, known
+    private BLE devices, beacons, tracked devices and names that look like
+    things that move are left out.
+
     Most stationary Bluetooth devices have no Bluetooth link in the device
     registry, so the registry can only pre-fill this list; the user ticks the
     devices that never move and picks their rooms.
@@ -375,9 +421,9 @@ def candidates(
         if address in saved or address in registry:
             pass  # always offer what the user or registry already named
         else:
-            if device.is_scanner or address in tracked:
+            if address in tracked or not _fixed_address(device, now):
                 continue
-            if device.address_type not in STABLE_ADDRESS_TYPES:
+            if _name_looks_mobile(getattr(device, "name", None)):
                 continue
             last_seen = getattr(device, "last_seen", 0) or 0
             if now - last_seen > max_age:

@@ -138,6 +138,9 @@ class BermudaDevice(dict):
         self.create_button_done: bool = False
         self.create_all_done: bool = False  # All platform entities are done and ready.
         self.last_seen: float = 0  # stamp from most recent scanner spotting. monotonic_time_coarse
+        # When this address was first heard (this session). Lets auto-tune tell an
+        # address that has stayed the same for a long time from a rotating one.
+        self.first_seen: float = monotonic_time_coarse()
         self.diag_area_switch: str | None = None  # saves output of AreaTests
         self.adverts: dict[
             tuple[str, str], BermudaAdvert
