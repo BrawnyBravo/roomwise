@@ -22,14 +22,17 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Bermuda
 
     bt_diags = await coordinator._manager.async_diagnostics()  # noqa
 
-    # Param structure for service call
-    call = ServiceCall(hass, DOMAIN, "dump_devices", {"redact": True})
+    # Param structure for service call. Unredacted here: the whole result is
+    # redacted in one go below.
+    call = ServiceCall(hass, DOMAIN, "dump_devices", {"redact": False})
 
     data: dict[str, Any] = {
         "active_devices": f"{coordinator.count_active_devices()}/{len(coordinator.devices)}",
         "active_scanners": f"{coordinator.count_active_scanners()}/{len(coordinator.scanner_list)}",
-        "irk_manager": coordinator.redact_data(coordinator.irk_manager.async_diagnostics_no_redactions()),
+        "options": coordinator.options,
+        "irk_manager": coordinator.irk_manager.async_diagnostics_no_redactions(),
         "devices": await coordinator.service_dump_devices(call),
-        "bt_manager": coordinator.redact_data(bt_diags),
+        "bt_manager": bt_diags,
     }
-    return data
+    # Redaction of a large install is real work: keep it off the event loop.
+    return await coordinator.async_redact_data(data)

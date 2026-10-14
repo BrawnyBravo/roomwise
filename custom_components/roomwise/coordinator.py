@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import aiofiles
 import voluptuous as vol
 import yaml
 from bluetooth_data_tools import monotonic_time_coarse
@@ -94,7 +93,7 @@ from .const import (
     SIGNAL_SCANNERS_CHANGED,
     UPDATE_INTERVAL,
 )
-from .util import mac_explode_formats, mac_norm
+from .util import mac_explode_formats, mac_norm, redact_addresses, snapshot_data
 
 if TYPE_CHECKING:
     from habluetooth import BluetoothServiceInfoBleak
@@ -113,6 +112,22 @@ Cancellable = Callable[[], None]
 # so we're just disabling it for the whole file.
 # https://github.com/astral-sh/ruff/issues/4244
 # ruff: noqa: PLR1730
+
+
+# The C loader parses the manufacturer tables several times faster.
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _load_manufacturer_ids(member_path: str, company_path: str) -> tuple[dict[int, str], dict[int, str]]:
+    """Read the Bluetooth SIG name tables. Blocking: run in the executor."""
+    with Path(member_path).open(encoding="utf-8") as f:
+        mi_yaml = yaml.load(f, Loader=YAML_LOADER)["uuids"]  # noqa: S506 - safe loader
+    with Path(company_path).open(encoding="utf-8") as f:
+        ci_yaml = yaml.load(f, Loader=YAML_LOADER)["company_identifiers"]  # noqa: S506 - safe loader
+    return (
+        {member["uuid"]: member["name"] for member in mi_yaml},
+        {member["value"]: member["name"] for member in ci_yaml},
+    )
 
 
 class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
@@ -154,12 +169,6 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         #
         # match/replacement pairs for redacting addresses
         self.redactions: dict[str, str] = {}
-        # Any remaining MAC addresses will be replaced with this. We define it here
-        # so we can compile it once. MAC addresses may have [:_-] separators.
-        self._redact_generic_re = re.compile(
-            r"(?P<start>[0-9A-Fa-f]{2})[:_-]([0-9A-Fa-f]{2}[:_-]){4}(?P<end>[0-9A-Fa-f]{2})"
-        )
-        self._redact_generic_sub = r"\g<start>:xx:xx:xx:xx:\g<end>"
 
         self.stamp_redactions_expiry: float | None = None
 
@@ -380,20 +389,18 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         """Import yaml files containing manufacturer name mappings."""
         try:
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/member_uuids.yaml
-            file_path = self.hass.config.path(
+            member_path = self.hass.config.path(
                 f"custom_components/{DOMAIN}/manufacturer_identification/member_uuids.yaml"
             )
-            async with aiofiles.open(file_path) as f:
-                mi_yaml = yaml.safe_load(await f.read())["uuids"]
-            self.member_uuids: dict[int, str] = {member["uuid"]: member["name"] for member in mi_yaml}
-
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/company_identifiers/company_identifiers.yaml
-            file_path = self.hass.config.path(
+            company_path = self.hass.config.path(
                 f"custom_components/{DOMAIN}/manufacturer_identification/company_identifiers.yaml"
             )
-            async with aiofiles.open(file_path) as f:
-                ci_yaml = yaml.safe_load(await f.read())["company_identifiers"]
-            self.company_uuids: dict[int, str] = {member["value"]: member["name"] for member in ci_yaml}
+            # Reading and parsing ~200 KB of YAML blocks for a noticeable time, so
+            # it runs in the executor rather than on the event loop.
+            self.member_uuids, self.company_uuids = await self.hass.async_add_executor_job(
+                _load_manufacturer_ids, member_path, company_path
+            )
         finally:
             # Ensure that an issue reading these files (which are optional, really) doesn't stop the whole show.
             self._waitingfor_load_manufacturer_ids = False
@@ -598,6 +605,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         Returns a list of dicts suitable for seeing which scanners
         are configured in the system and how long it has been since
         each has returned an advertisement.
+
+        Sorted by scanner name, so the list is stable and easy to scan by eye.
         """
         stamp = monotonic_time_coarse()
         return [
@@ -607,7 +616,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 "last_stamp": scannerdev.last_seen,
                 "last_stamp_age": stamp - scannerdev.last_seen,
             }
-            for scannerdev in self.get_scanners
+            for scannerdev in sorted(self.get_scanners, key=lambda scanner: str(scanner.name).casefold())
         ]
 
     def _get_device(self, address: str) -> BermudaDevice | None:
@@ -766,6 +775,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 device = self._get_or_create_device(bledevice.address)
+                device.async_apply_address_details(bledevice.details)
                 device.process_advertisement(scanner_device, advertisementdata)
 
         # end of for ha_scanner loop
@@ -799,6 +809,24 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         prune_list: list[str] = []  # list of addresses to be pruned
         prunable_stamps: dict[str, float] = {}  # dict of potential prunees if we need to be more aggressive.
 
+        # An iBeacon nobody tracks and nobody has heard for a day goes, along
+        # with its metadevice. Without this, the source-keeper loop below
+        # always keeps each beacon's newest source, and nothing removed entries
+        # from metadevices, so every distinct beacon ever heard stayed in memory
+        # for good. Once the metadevice is gone its source is an ordinary stale
+        # MAC and the sweep below prunes it.
+        stale_beacons = [
+            address
+            for address, metadevice in self.metadevices.items()
+            if METADEVICE_IBEACON_DEVICE in metadevice.metadevice_type
+            and not metadevice.create_sensor
+            and (metadevice.last_seen or 0) < nowstamp - PRUNE_TIME_DEFAULT
+        ]
+        for address in stale_beacons:
+            _LOGGER.debug("Pruning stale untracked iBeacon %s", address)
+            del self.metadevices[address]
+            self.devices.pop(address, None)
+
         metadevice_source_keepers = set()
         for metadevice in self.metadevices.values():
             if len(metadevice.metadevice_sources) > 0:
@@ -831,7 +859,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             # should totally be pruned if it's no longer around.
             if (
                 device_address not in metadevice_source_keepers
-                and device not in self.metadevices
+                and device_address not in self.metadevices
                 and device_address not in self.scanner_list
                 and (not device.create_sensor)  # Not if we track the device
                 and (not device.is_scanner)  # redundant, but whatevs.
@@ -889,10 +917,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     "Prune quota short by %d. Pruning %d extra devices (down to age %0.2f seconds)",
                     prune_quota_shortfall,
                     cutoff_index,
-                    nowstamp - sorted_addresses[prune_quota_shortfall - 1][0],
+                    nowstamp - sorted_addresses[cutoff_index - 1][0],
                 )
                 # pylint: disable-next=unused-variable
-                for _stamp, address in sorted_addresses[: prune_quota_shortfall - 1]:
+                for _stamp, address in sorted_addresses[:cutoff_index]:
                     prune_list.append(address)
             else:
                 _LOGGER.warning(
@@ -908,10 +936,19 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # Prune_list is now ready to action. It contains no keepers, and is already
         # expanded if necessary to meet quota, as much as we can.
 
-        # Prune the source devices
+        # Prune the source devices.
+        #
+        # prune_list can legitimately contain the same address twice: it is
+        # appended to from independent sweeps whose selections overlap. A stale
+        # IRK source older than PRUNE_TIME_KNOWN_IRK is picked up by both the
+        # metadevice-source sweep and the unknown-IRK sweep. Deleting it twice
+        # used to raise KeyError, aborting the whole update cycle and skipping
+        # the source/advert clean-up below. De-duplicate (keeping order for the
+        # debug log) and use pop() so a repeat is harmless.
+        prune_list = list(dict.fromkeys(prune_list))
         for device_address in prune_list:
             _LOGGER.debug("Acting on prune list for %s", device_address)
-            del self.devices[device_address]
+            self.devices.pop(device_address, None)
 
         # Clean out the scanners dicts in metadevices and scanners
         # (scanners will have entries if they are also beacons, although
@@ -1622,7 +1659,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
         if redact:
             _stamp_redact = monotonic_time_coarse()
-            out = cast("ServiceResponse", self.redact_data(out))
+            out = cast("ServiceResponse", await self.async_redact_data(out))
             _stamp_redact_elapsed = monotonic_time_coarse() - _stamp_redact
             if _stamp_redact_elapsed > 3:  # It should be fast now.
                 _LOGGER.warning("Dump devices redaction took %2f seconds", _stamp_redact_elapsed)
@@ -1695,37 +1732,25 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
     def redact_data(self, data, first_recursion=True):
         """
-        Wash any collection of data of any MAC addresses.
+        Wash any collection of data of any MAC addresses, IRKs and iBeacon ids.
 
-        Uses the redaction list of substitutions if already created, then
-        washes any remaining mac-like addresses. This routine is recursive,
-        so if you're changing it bear that in mind!
+        Synchronous: fine for small data. For diagnostics-sized data use
+        async_redact_data, which does the heavy part in an executor job.
         """
         if first_recursion:
-            # On first/outer call, refresh the redaction list to ensure
-            # we don't let any new addresses slip through. Might be expensive
-            # on first call, but will be much cheaper for subsequent calls.
+            # Refresh the redaction list so no new addresses slip through.
             self.redaction_list_update()
-            first_recursion = False
+        return redact_addresses(data, self.redactions)
 
-        if isinstance(data, str):  # Base Case
-            datalower = data.lower()
-            # the end of the recursive wormhole, do the actual work:
-            if datalower in self.redactions:
-                # Full string match, a quick short-circuit
-                data = self.redactions[datalower]
-            else:
-                # Search for any of the redaction strings in the data.
-                for find, fix in list(self.redactions.items()):
-                    if find in datalower:
-                        data = datalower.replace(find, fix)
-                        # don't break out because there might be multiple fixes required.
-            # redactions done, now replace any remaining MAC addresses
-            # We are only looking for xx:xx:xx... format.
-            return self._redact_generic_re.sub(self._redact_generic_sub, data)
-        elif isinstance(data, dict):
-            return {self.redact_data(k, False): self.redact_data(v, False) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [self.redact_data(v, False) for v in data]
-        else:  # Base Case
-            return data
+    async def async_redact_data(self, data):
+        """
+        Redact data without blocking the event loop.
+
+        The redaction table refresh and a copy of the data's containers happen
+        here on the loop (both linear and quick), so the executor job never sees
+        a dict the loop is changing. The per-string work runs in the executor.
+        """
+        self.redaction_list_update()
+        snapshot = snapshot_data(data)
+        redactions = dict(self.redactions)
+        return await self.hass.async_add_executor_job(redact_addresses, snapshot, redactions)

@@ -57,3 +57,14 @@ async def test_setup_entry_exception(hass, error_on_get_data):
     # anything will "catch" our over-ridded async_refresh's exception.
     #  with pytest.raises(ConfigEntryNotReady):
     #     assert await async_setup_entry(hass, config_entry)
+
+
+async def test_unload_removes_dump_devices_service(hass: HomeAssistant, bypass_get_data, setup_bermuda_entry):
+    """The dump_devices service must go when the integration unloads, and come back on reload."""
+    assert hass.services.has_service(DOMAIN, "dump_devices")
+
+    assert await hass.config_entries.async_reload(setup_bermuda_entry.entry_id)
+    assert hass.services.has_service(DOMAIN, "dump_devices")
+
+    assert await hass.config_entries.async_unload(setup_bermuda_entry.entry_id)
+    assert not hass.services.has_service(DOMAIN, "dump_devices")
