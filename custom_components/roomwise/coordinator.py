@@ -67,6 +67,7 @@ from .const import (
     CONF_MAX_VELOCITY,
     CONF_REF_POWER,
     CONF_RSSI_OFFSETS,
+    CONF_SCANNER_MAX_RADIUS,
     CONF_SMOOTHING_SAMPLES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_ATTENUATION,
@@ -272,6 +273,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     CONF_REF_POWER,
                     CONF_SMOOTHING_SAMPLES,
                     CONF_RSSI_OFFSETS,
+                    CONF_SCANNER_MAX_RADIUS,
                 ):
                     self.options[key] = val
 
@@ -1358,6 +1360,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         incumbent: BermudaAdvert | None = device.area_advert
 
         _max_radius = self.options.get(CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS)
+        _scanner_radius = self.options.get(CONF_SCANNER_MAX_RADIUS) or {}  # set by auto-tune
         nowstamp = monotonic_time_coarse()
 
         tests = self.AreaTests()
@@ -1399,7 +1402,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             # If we are too far away or don't have an area, we cannot win...
             if (
                 challenger.rssi_distance is None
-                or challenger.rssi_distance > _max_radius
+                or challenger.rssi_distance > _scanner_radius.get(challenger.scanner_address, _max_radius)
                 or challenger.area_id is None
             ):
                 continue

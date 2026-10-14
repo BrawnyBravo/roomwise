@@ -162,6 +162,7 @@ CONF_SCANNERS = "configured_scanners"
 
 
 CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS = "max_area_radius", 20
+CONF_SCANNER_MAX_RADIUS = "scanner_max_radius"  # {scanner address: metres}, overrides CONF_MAX_RADIUS per scanner
 DOCS[CONF_MAX_RADIUS] = "For simple area-detection, max radius from receiver"
 
 CONF_MAX_VELOCITY, DEFAULT_MAX_VELOCITY = "max_velocity", 3

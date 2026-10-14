@@ -81,7 +81,41 @@
         "data_description": {
           "scanner_info": "Leave at zero to accept the global default, or enter a non-zero number to offset the rssi reported by that scanner. Adjust until the estimated distance above matches the actual distance between that scanner and the selected transmitting device. Negative values will increase the distance, positive values will decrease it."
         }
+      },
+      "autotune": {
+        "title": "Auto-tune rooms",
+        "description": "Roomwise can tune itself using devices that never move and whose room you know: smart plugs, lights, TVs, appliances. Only devices in a room that has a Bluetooth scanner can be used to check the result (rooms with a scanner: {scanner_rooms}).\n\nBelow are {candidate_count} devices Roomwise hears steadily at a fixed address. {suggested_count} are ticked because Home Assistant already knows their room or you chose them before. Tick only devices that never move. Next you will confirm each one's room.\n\nRoomwise then listens for the time you choose, using the adverts it already receives, and shows what it would change. Nothing is saved unless you press Apply.",
+        "data": {
+          "autotune_selected": "Devices that never move",
+          "autotune_minutes": "Minutes to listen",
+          "autotune_export": "Also save the raw readings to a file"
+        },
+        "data_description": {
+          "autotune_minutes": "10 minutes is a good start. Longer gives steadier numbers.",
+          "autotune_export": "Writes {export_file} in your Home Assistant config folder, for troubleshooting. It contains device addresses and room names."
+        }
+      },
+      "autotune_result": {
+        "title": "Auto-tune result",
+        "description": "{summary}\n\nEach device is checked using settings tuned without it, so this is a fair test.\n\n{table}",
+        "data": {
+          "autotune_apply": "Apply these settings"
+        },
+        "data_description": {
+          "autotune_apply": "Saves the new scanner offsets, the same values you could set by hand in Calibration 2."
+        }
+      },
+      "autotune_rooms": {
+        "title": "Confirm rooms",
+        "description": "Pick the room each of the {count} devices is in. Leave a room empty to skip that device. Keep this window open while Roomwise listens."
       }
+    },
+    "progress": {
+      "autotune_collecting": "Listening to your devices for {minutes} minutes. Keep this window open."
+    },
+    "abort": {
+      "autotune_not_applied": "Nothing was changed.",
+      "autotune_failed": "Auto-tune could not finish. Nothing was changed. The log has details."
     }
   },
   "entity": {
