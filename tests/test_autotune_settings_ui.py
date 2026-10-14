@@ -55,9 +55,7 @@ def test_result_shows_saved_range_limits_even_when_nothing_changes():
 
 
 def test_apply_help_says_exactly_what_is_saved():
-    strings = json.loads(
-        (Path(autotune_ha.__file__).parent / "translations" / "en.json").read_text(encoding="utf-8")
-    )
+    strings = json.loads((Path(autotune_ha.__file__).parent / "translations" / "en.json").read_text(encoding="utf-8"))
     text = strings["options"]["step"]["autotune_result"]["data_description"]["autotune_apply"]
     for words in ("offsets", "range limits", "devices you picked", "Reset auto-tune settings"):
         assert words in text, words

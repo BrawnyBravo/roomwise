@@ -156,7 +156,7 @@ def _heard_steadily(device, now: float) -> bool:
 
 def _fixed_address(device, now: float) -> bool:
     """
-    Could this address belong to a device that never moves?
+    Say whether this address could belong to a device that never moves.
 
     Public and random-static addresses: yes. Addresses that look rotating from
     their shape: only when heard steadily (they may be public addresses with no
@@ -186,7 +186,7 @@ def _name_looks_mobile(name: str | None) -> bool:
     return any(word in text for word in MOVING_DEVICE_WORDS)
 
 
-def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> Discovery:
+def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> Discovery:  # noqa: C901
     """Find landmarks and scanners. Must run in the event loop."""
     devreg = dr.async_get(hass)
     entreg = er.async_get(hass)

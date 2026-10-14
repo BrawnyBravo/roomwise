@@ -217,6 +217,9 @@ def redact_addresses(data: Any, redactions: dict[str, str]) -> Any:
             return [_redact(v) for v in item]
         if isinstance(item, (tuple, set, frozenset)):
             return _rebuild_sequence(item, [_redact(v) for v in item])
+        return _redact_object(item)
+
+    def _redact_object(item: Any) -> Any:
         if item is None or isinstance(item, (bool, int, float, bytes, bytearray)):
             return item
         # Any other object (for example a bleak BLEDevice in HA's Bluetooth

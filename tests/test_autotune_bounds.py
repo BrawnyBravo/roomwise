@@ -156,9 +156,9 @@ def test_fit_and_evaluate_stop_when_asked():
         checks += 1
         return checks > 3
 
-    with pytest.raises(at.AutotuneCancelled):
+    with pytest.raises(at.AutotuneCancelledError):
         at.fit(medians, landmarks, SCANNERS, DEFAULT, at.TuneOptions(should_stop=stop_after_three))
-    with pytest.raises(at.AutotuneCancelled):
+    with pytest.raises(at.AutotuneCancelledError):
         at.evaluate(landmarks, SCANNERS, samples, DEFAULT, at.TuneOptions(should_stop=lambda: True))
 
 
@@ -181,11 +181,11 @@ async def test_closing_the_dialog_stops_the_tuner_job(hass: HomeAssistant):
                 options.check_stop()
                 time.sleep(0.01)
             outcome["result"] = "ran to the end"
-        except at.AutotuneCancelled:
+        except at.AutotuneCancelledError:
             outcome["result"] = "stopped"
         outcome["elapsed"] = time.monotonic() - t0
         finished.set()
-        raise at.AutotuneCancelled
+        raise at.AutotuneCancelledError
 
     landmarks = [at.Landmark(lid, "Kitchen") for lid in coord.landmark_ids]
     scanners = [at.Scanner(sid, "Kitchen") for sid in coord.scanner_ids]
@@ -238,7 +238,9 @@ async def test_capped_run_says_so_in_the_result(hass: HomeAssistant):
 
 
 async def _submit_first_step(hass: HomeAssistant, entry: MockConfigEntry, selected: int, minutes: float):
-    cands = [autotune_ha.Candidate(f"11:22:33:44:{i // 256:02x}:{i % 256:02x}", f"Dev {i}", None, False) for i in range(70)]
+    cands = [
+        autotune_ha.Candidate(f"11:22:33:44:{i // 256:02x}:{i % 256:02x}", f"Dev {i}", None, False) for i in range(70)
+    ]
     found = autotune_ha.Discovery(scanners=[at.Scanner("aa:aa:aa:aa:aa:01", "kitchen", "Kitchen proxy")])
     with (
         patch("custom_components.roomwise.autotune_flow.discover", return_value=found),
@@ -282,9 +284,7 @@ def test_error_texts_match_the_limits():
     import json
     from pathlib import Path
 
-    strings = json.loads(
-        (Path(autotune_ha.__file__).parent / "translations" / "en.json").read_text(encoding="utf-8")
-    )
+    strings = json.loads((Path(autotune_ha.__file__).parent / "translations" / "en.json").read_text(encoding="utf-8"))
     errors = strings["options"]["error"]
     assert str(autotune_ha.MAX_AUTOTUNE_LANDMARKS) in errors["autotune_too_many_devices"]
     assert str(autotune_ha.MAX_AUTOTUNE_DEVICE_MINUTES) in errors["autotune_too_long"]

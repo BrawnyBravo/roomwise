@@ -63,7 +63,7 @@ DEFAULT_LOO_MAX_LANDMARKS = 20
 DEFAULT_FOLDS = 10
 
 
-class AutotuneCancelled(Exception):
+class AutotuneCancelledError(Exception):
     """The run was stopped (the dialog was closed) before the tuner finished."""
 
 
@@ -292,11 +292,11 @@ class TuneOptions:
     max_passes: int = 20
     loo_max_landmarks: int = DEFAULT_LOO_MAX_LANDMARKS  # above this, k-fold instead of leave-one-out
     folds: int = DEFAULT_FOLDS
-    should_stop: Callable[[], bool] | None = None  # polled during the work; True raises AutotuneCancelled
+    should_stop: Callable[[], bool] | None = None  # polled during the work; True raises AutotuneCancelledError
 
     def check_stop(self) -> None:
         if self.should_stop is not None and self.should_stop():
-            raise AutotuneCancelled
+            raise AutotuneCancelledError
 
 
 def _landmark_cost(
@@ -378,7 +378,7 @@ def _offset_range(current: float, limit: float) -> list[float]:
     return sorted(values)
 
 
-def fit(
+def fit(  # noqa: C901 - coordinate descent in two stages, kept in one place on purpose
     medians: dict[str, dict[str, float]],
     landmarks: Iterable[Landmark],
     scanners: Iterable[Scanner],
@@ -524,7 +524,7 @@ def evaluate(
     Either pass raw samples or pre-aggregated medians. With more than
     options.loo_max_landmarks devices to judge, "after" is scored by k-fold
     (options.folds fits, each leaving out a whole group) to bound the work.
-    Raises AutotuneCancelled when options.should_stop() turns True.
+    Raises AutotuneCancelledError when options.should_stop() turns True.
     """
     options = options or TuneOptions()
     fit_func = fit_func or fit

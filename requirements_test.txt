@@ -1,5 +1,7 @@
 -r requirements.txt
-pytest-homeassistant-custom-component
-#==0.13.50
+# Pinned as a pair that is known to work together: each
+# pytest-homeassistant-custom-component release pins one Home Assistant release.
+# Bump both together (and re-run the suite) when moving to a newer HA.
+pytest-homeassistant-custom-component==0.13.366
+homeassistant==2026.9.3
 pre-commit
-# AJG 2024-04-07: github not completing tests due to this.

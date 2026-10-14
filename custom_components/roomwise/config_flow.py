@@ -20,6 +20,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
+from .autotune_flow import AutotuneOptionsMixin
 from .const import (
     ADDR_TYPE_IBEACON,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
@@ -48,7 +49,6 @@ from .const import (
     DOMAIN_PRIVATE_BLE_DEVICE,
     NAME,
 )
-from .autotune_flow import AutotuneOptionsMixin
 from .util import mac_redact, rssi_to_metres
 
 if TYPE_CHECKING:

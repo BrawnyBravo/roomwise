@@ -1424,9 +1424,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
             # If closest scanner lacks critical data, we win.
             if (
-                incumbent is None
-                or incumbent.rssi_distance is None
-                or incumbent.area_id is None
+                incumbent is None or incumbent.rssi_distance is None or incumbent.area_id is None
                 # Extra checks that are redundant but make linting easier later...
                 # or closest_advert.hist_distance_by_interval is None
             ):
@@ -1496,9 +1494,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             pdiff_outright = 0.30  # Percentage difference to win outright / instantly
             pdiff_historical = 0.15  # Percentage difference required to win on historical test
             if len(challenger.hist_distance_by_interval) > min_history:  # we have enough history, let's go..
+                # (the closest the incumbent has been, the **furthest** we have been) in that time
                 tests.hist_min_max = (
-                    min(incumbent.hist_distance_by_interval[:history_window]),  # The closest that the incumbent has been
-                    max(challenger.hist_distance_by_interval[:history_window]),  # The **furthest** we have been in that time
+                    min(incumbent.hist_distance_by_interval[:history_window]),
+                    max(challenger.hist_distance_by_interval[:history_window]),
                 )
                 if (
                     tests.hist_min_max[1] < tests.hist_min_max[0]
