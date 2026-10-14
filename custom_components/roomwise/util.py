@@ -141,6 +141,25 @@ _REDACT_TOKEN_RE = re.compile(
 )
 
 
+def _rebuild_sequence(original: tuple | set | frozenset, items: list[Any]) -> Any:
+    """
+    Build a container of the same kind as original from already-copied items.
+
+    NamedTuples (for example bleak's AdvertisementData, which HA's Bluetooth
+    diagnostics contain) take one positional argument per field, not a single
+    iterable. Any other tuple subclass we cannot rebuild becomes a plain tuple.
+    """
+    kind = type(original)
+    if hasattr(original, "_fields"):
+        return kind(*items)
+    if kind in (tuple, set, frozenset):
+        return kind(items)
+    try:
+        return kind(items)
+    except TypeError:
+        return frozenset(items) if isinstance(original, (set, frozenset)) else tuple(items)
+
+
 def snapshot_data(data: Any) -> Any:
     """
     Copy the containers (dict, list, tuple, set) of a data structure.
@@ -154,7 +173,7 @@ def snapshot_data(data: Any) -> Any:
     if isinstance(data, list):
         return [snapshot_data(v) for v in data]
     if isinstance(data, (tuple, set, frozenset)):
-        return type(data)(snapshot_data(v) for v in data)
+        return _rebuild_sequence(data, [snapshot_data(v) for v in data])
     return data
 
 
@@ -197,7 +216,17 @@ def redact_addresses(data: Any, redactions: dict[str, str]) -> Any:
         if isinstance(item, list):
             return [_redact(v) for v in item]
         if isinstance(item, (tuple, set, frozenset)):
-            return type(item)(_redact(v) for v in item)
-        return item
+            return _rebuild_sequence(item, [_redact(v) for v in item])
+        if item is None or isinstance(item, (bool, int, float, bytes, bytearray)):
+            return item
+        # Any other object (for example a bleak BLEDevice in HA's Bluetooth
+        # diagnostics) is written to the diagnostics file as its repr(). If
+        # that repr holds an address, hand back the redacted text instead.
+        try:
+            text = repr(item)
+        except Exception:  # noqa: BLE001 - a broken __repr__ must not stop diagnostics
+            return item
+        redacted = _REDACT_TOKEN_RE.sub(_token, text)
+        return redacted if redacted != text else item
 
     return _redact(data)

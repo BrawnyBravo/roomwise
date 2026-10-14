@@ -190,3 +190,93 @@ async def test_diagnostics_redaction_runs_in_the_executor(hass: HomeAssistant, b
     assert KNOWN_A.replace(":", "") not in text
     assert "devices" in diag
     assert "bt_manager" in diag
+
+
+def _advertisement_data(rssi=-60):
+    """A real bleak AdvertisementData (a NamedTuple), as found in HA's Bluetooth diagnostics."""
+    from bleak.backends.scanner import AdvertisementData
+
+    return AdvertisementData(
+        local_name=f"Sensor {KNOWN_A}",
+        manufacturer_data={76: b"\x02\x15"},
+        service_data={"0000fe9f-0000-1000-8000-00805f9b34fb": b"\x00"},
+        service_uuids=["0000fe9f-0000-1000-8000-00805f9b34fb"],
+        tx_power=None,
+        rssi=rssi,
+        platform_data=(KNOWN_A.upper(), {"source": KNOWN_B}),
+    )
+
+
+def test_snapshot_and_redaction_keep_namedtuples_intact():
+    """NamedTuples (bleak AdvertisementData) must be rebuilt field by field, not from one iterable."""
+    from typing import NamedTuple
+
+    from custom_components.roomwise.util import redact_addresses, snapshot_data
+
+    class Pair(NamedTuple):
+        address: str
+        rssi: int
+
+    advert = _advertisement_data()
+    data = {
+        "all_history": [{"address": KNOWN_A.upper(), "advertisement": advert}],
+        "pair": Pair(KNOWN_A, -70),
+        "plain": (KNOWN_A, 1),
+        "set": frozenset({KNOWN_A}),
+    }
+
+    snap = snapshot_data(data)
+    assert snap == data
+    assert type(snap["all_history"][0]["advertisement"]) is type(advert)
+    assert type(snap["pair"]) is Pair
+
+    out = redact_addresses(snap, {})
+    red_advert = out["all_history"][0]["advertisement"]
+    assert type(red_advert) is type(advert)
+    assert red_advert.rssi == -60
+    assert red_advert.manufacturer_data == {76: b"\x02\x15"}
+    assert KNOWN_A not in red_advert.local_name.lower()
+    assert type(out["pair"]) is Pair
+    assert out["pair"].rssi == -70
+    assert type(out["plain"]) is tuple
+    text = repr(out).lower()
+    assert KNOWN_A not in text
+    assert KNOWN_A.replace(":", "") not in text
+    assert KNOWN_B not in text
+
+
+async def test_diagnostics_with_bluetooth_advert_history(hass: HomeAssistant, bypass_get_data, setup_bermuda_entry):
+    """Download diagnostics works when HA's Bluetooth manager holds real advert history."""
+    from bleak.backends.device import BLEDevice
+    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+    from homeassistant.components.bluetooth.api import _get_manager
+
+    coordinator = setup_bermuda_entry.runtime_data.coordinator
+    advert = _advertisement_data()
+    info = BluetoothServiceInfoBleak(
+        name=advert.local_name,
+        address=KNOWN_A.upper(),
+        rssi=advert.rssi,
+        manufacturer_data=advert.manufacturer_data,
+        service_data=advert.service_data,
+        service_uuids=advert.service_uuids,
+        source=KNOWN_B.upper(),
+        device=BLEDevice(KNOWN_A.upper(), advert.local_name, {"source": KNOWN_B.upper()}),
+        advertisement=advert,
+        connectable=False,
+        time=time.monotonic(),
+        tx_power=None,
+    )
+    _get_manager(hass).scanner_adv_received(info)
+
+    bt_diags = await coordinator._manager.async_diagnostics()  # noqa: SLF001
+    assert bt_diags["all_history"], "advert was not recorded by the Bluetooth manager"
+
+    diag = await async_get_config_entry_diagnostics(hass, setup_bermuda_entry)
+
+    history = diag["bt_manager"]["all_history"]
+    assert history
+    assert history[0]["advertisement"].rssi == -60
+    text = repr(diag).lower()
+    assert KNOWN_A not in text
+    assert KNOWN_A.replace(":", "") not in text
