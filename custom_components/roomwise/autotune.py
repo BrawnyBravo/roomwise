@@ -56,6 +56,15 @@ RADIUS_CHANGE_COST = 0.01  # small preference for leaving a scanner's radius alo
 WRONG_ROOM_WEIGHT = 10.0  # a wrong room costs far more than any margin shortfall
 OUTSIDER_WEIGHT = 1.0  # a device in a room with no scanner placed in some other room
 OUTSIDER_IN_RANGE_WEIGHT = 0.1  # per receiver that has such a device in range
+# Leave-one-out needs one full fit per scored device. Above this many devices
+# the "after" score uses k-fold instead (DEFAULT_FOLDS fits), which keeps the
+# work bounded on a big install.
+DEFAULT_LOO_MAX_LANDMARKS = 20
+DEFAULT_FOLDS = 10
+
+
+class AutotuneCancelled(Exception):
+    """The run was stopped (the dialog was closed) before the tuner finished."""
 
 
 # --------------------------------------------------------------------------
@@ -81,7 +90,7 @@ class Scanner:
     name: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Sample:
     """One received advert: landmark heard by scanner at rssi, time t (seconds)."""
 
@@ -280,6 +289,13 @@ class TuneOptions:
     tune_radius: bool = True  # per-scanner max radius, only ever made smaller than the global one
     min_landmarks: int = DEFAULT_MIN_LANDMARKS
     max_passes: int = 20
+    loo_max_landmarks: int = DEFAULT_LOO_MAX_LANDMARKS  # above this, k-fold instead of leave-one-out
+    folds: int = DEFAULT_FOLDS
+    should_stop: Callable[[], bool] | None = None  # polled during the work; True raises AutotuneCancelled
+
+    def check_stop(self) -> None:
+        if self.should_stop is not None and self.should_stop():
+            raise AutotuneCancelled
 
 
 def _landmark_cost(
@@ -415,6 +431,7 @@ def fit(
         improved = False
         # one scanner at a time
         for scanner_id, values in ranges.items():
+            options.check_stop()
             for value in values:
                 if value == best.offsets[scanner_id]:
                     continue
@@ -466,6 +483,7 @@ def fit(
         for _ in range(options.max_passes):
             improved = False
             for scanner_id in trimmable:
+                options.check_stop()
                 for radius in radius_choices:
                     if radius == best.radius(scanner_id):
                         continue
@@ -502,7 +520,10 @@ def evaluate(
     """
     Tune and judge. Before = current settings. After = leave-one-landmark-out.
 
-    Either pass raw samples or pre-aggregated medians.
+    Either pass raw samples or pre-aggregated medians. With more than
+    options.loo_max_landmarks devices to judge, "after" is scored by k-fold
+    (options.folds fits, each leaving out a whole group) to bound the work.
+    Raises AutotuneCancelled when options.should_stop() turns True.
     """
     options = options or TuneOptions()
     fit_func = fit_func or fit
@@ -530,21 +551,43 @@ def evaluate(
             results.append(LandmarkResult(lm, True, "", heard_by=heard))
             usable.append(lm)
 
+    options.check_stop()
     proposed = fit_func({lm.id: medians[lm.id] for lm in usable}, usable, scanners, current, options)
+
+    judged: list[LandmarkResult] = []
+    for res in results:
+        if not (res.scored or res.outsider):
+            continue
+        res.before_area, _ = predict_area(res.heard_by, scanner_map, current)
+        if res.outsider and not options.tune_radius:
+            res.after_area = res.before_area
+        else:
+            judged.append(res)
+
+    # Groups of devices to leave out together: one each (leave-one-out), or
+    # k interleaved folds when there are many.
+    folded = len(judged) > max(options.loo_max_landmarks, 1)
+    if folded:
+        folds = max(2, options.folds)
+        groups = [judged[i::folds] for i in range(folds)]
+    else:
+        groups = [[res] for res in judged]
+    for group in groups:
+        if not group:
+            continue
+        options.check_stop()
+        left_out = {res.landmark.id for res in group}
+        training = [other for other in usable if other.id not in left_out]
+        loo_settings = fit_func(
+            {other.id: medians[other.id] for other in training}, training, scanners, current, options
+        )
+        for res in group:
+            res.after_area, _ = predict_area(res.heard_by, scanner_map, loo_settings)
 
     for res in results:
         if not (res.scored or res.outsider):
             continue
         lm = res.landmark
-        res.before_area, _ = predict_area(res.heard_by, scanner_map, current)
-        if res.outsider and not options.tune_radius:
-            res.after_area = res.before_area
-        else:
-            training = [other for other in usable if other.id != lm.id]
-            loo_settings = fit_func(
-                {other.id: medians[other.id] for other in training}, training, scanners, current, options
-            )
-            res.after_area, _ = predict_area(res.heard_by, scanner_map, loo_settings)
         if res.outsider:
             res.before_ok = res.before_area is None
             res.after_ok = res.after_area is None
@@ -586,6 +629,12 @@ def evaluate(
         summary += (
             f" {unscored} other device{'s' if unscored != 1 else ''} could not be checked"
             " (no receiver in the room, no room set, or not heard)."
+        )
+
+    if folded:
+        summary += (
+            f" Because many devices were chosen, each was checked with settings tuned without its group of"
+            f" about {max(1, round(len(judged) / max(2, options.folds)))} devices."
         )
 
     final = proposed if recommend else current.copy()

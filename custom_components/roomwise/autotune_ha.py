@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
-from functools import partial
+import random
+import threading
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,7 +24,16 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .autotune import Landmark, Sample, Scanner, Settings, TuneOptions, TuneReport, evaluate, export_dict
+from .autotune import (
+    Landmark,
+    Sample,
+    Scanner,
+    Settings,
+    TuneOptions,
+    TuneReport,
+    evaluate,
+    export_dict,
+)
 from .const import (
     ADDR_TYPE_IBEACON,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
@@ -54,6 +64,19 @@ if TYPE_CHECKING:
 DEFAULT_AUTOTUNE_MINUTES = 10
 CONF_AUTOTUNE_LANDMARKS = "autotune_landmarks"  # {address: area_id}, saved on Apply
 EXPORT_FILENAME = "roomwise_autotune_samples.json"
+
+# Size limits, so a big selection cannot exhaust memory or CPU on a small box.
+# Memory: at most MAX_TOTAL_SAMPLES samples are kept (about 10 MB, plus about as
+# much again while the optional export file is written).
+MAX_SAMPLES_PER_PAIR = 600  # per (device, receiver): a uniform sample of the whole window
+MAX_TOTAL_SAMPLES = 100_000
+MAX_AUTOTUNE_LANDMARKS = 60  # devices that can be ticked in one run
+MAX_AUTOTUNE_MINUTES = 60
+MAX_AUTOTUNE_DEVICE_MINUTES = 1200  # devices x minutes, e.g. 40 devices for 30 minutes
+CAPPED_NOTE = (
+    "Auto-tune stopped recording new readings after {count:,} (its memory limit); "
+    "the result uses what it had collected by then."
+)
 
 # Words in a device's name, model or manufacturer that mean "this thing moves".
 MOVING_DEVICE_WORDS = (
@@ -243,14 +266,39 @@ def settings_to_options(report: TuneReport, options: dict) -> dict:
 
 
 class SampleCollector:
-    """Records (landmark, scanner, rssi, stamp) from the coordinator's own data."""
+    """
+    Records (landmark, scanner, rssi, stamp) from the coordinator's own data.
 
-    def __init__(self, coordinator: BermudaDataUpdateCoordinator, addresses: list[str]) -> None:
+    Memory is bounded: each (landmark, scanner) pair keeps at most
+    max_per_pair readings, chosen uniformly over the whole run (reservoir
+    sampling, seeded so a run is repeatable), and no more than max_total
+    readings are held overall. When the overall limit stops new pairs from
+    growing, `capped` is set so the result can say so.
+    """
+
+    def __init__(
+        self,
+        coordinator: BermudaDataUpdateCoordinator,
+        addresses: list[str],
+        max_per_pair: int | None = None,
+        max_total: int | None = None,
+    ) -> None:
         self.coordinator = coordinator
         self.addresses = [a.lower() for a in addresses]
-        self.samples: list[Sample] = []
+        self.max_per_pair = MAX_SAMPLES_PER_PAIR if max_per_pair is None else max_per_pair
+        self.max_total = MAX_TOTAL_SAMPLES if max_total is None else max_total
+        self.stored = 0
+        self.capped = False
+        self._pairs: dict[tuple[str, str], list[Sample]] = {}
+        self._seen: dict[tuple[str, str], int] = {}
         self._last: dict[tuple[str, str], float] = {}
+        self._rng = random.Random(0)  # noqa: S311 - sampling, not security
         self._unsub = None
+
+    @property
+    def samples(self) -> list[Sample]:
+        """Every kept reading. Call after stop() (or on the event loop)."""
+        return [sample for kept in self._pairs.values() for sample in kept]
 
     def start(self) -> None:
         self._unsub = self.coordinator.async_add_listener(self.poll)
@@ -260,6 +308,21 @@ class SampleCollector:
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+
+    def _keep(self, key: tuple[str, str], sample: Sample) -> None:
+        kept = self._pairs.setdefault(key, [])
+        seen = self._seen.get(key, 0) + 1
+        self._seen[key] = seen
+        if len(kept) < self.max_per_pair:
+            if self.stored >= self.max_total:
+                self.capped = True
+                return
+            kept.append(sample)
+            self.stored += 1
+            return
+        slot = self._rng.randrange(seen)
+        if slot < self.max_per_pair:
+            kept[slot] = sample
 
     @callback
     def poll(self) -> None:
@@ -275,7 +338,7 @@ class SampleCollector:
                 if self._last.get(key) == advert.stamp:
                     continue
                 self._last[key] = advert.stamp
-                self.samples.append(Sample(address, advert.scanner_address, float(advert.rssi), advert.stamp))
+                self._keep(key, Sample(address, advert.scanner_address, float(advert.rssi), advert.stamp))
 
 
 @dataclass
@@ -349,7 +412,12 @@ async def async_run_autotune(
     export_path: str | None = None,
     tune_options: TuneOptions | None = None,
 ) -> TuneReport:
-    """Collect for `seconds` from the coordinator's own adverts, then tune (off the event loop)."""
+    """
+    Collect for `seconds` from the coordinator's own adverts, then tune (off the event loop).
+
+    If the task is cancelled (the user closed the dialog), the tuner running in
+    the executor is told to stop at its next check instead of running to the end.
+    """
     collector = SampleCollector(coordinator, [lm.id for lm in landmarks])
     collector.start()
     try:
@@ -357,12 +425,46 @@ async def async_run_autotune(
     finally:
         collector.stop()
     settings = current_settings(options, [s.id for s in scanners])
-    if export_path:
-        data = export_dict(landmarks, scanners, settings, collector.samples, area_names)
-        await hass.async_add_executor_job(_write_json, export_path, data)
-    return await hass.async_add_executor_job(
-        partial(evaluate, area_names=area_names), landmarks, scanners, collector.samples, settings, tune_options
-    )
+    stop = threading.Event()
+    tune_options = replace(tune_options or TuneOptions(), should_stop=stop.is_set)
+    try:
+        if export_path:
+            await hass.async_add_executor_job(
+                _write_export, export_path, landmarks, scanners, settings, collector, area_names
+            )
+        report = await hass.async_add_executor_job(
+            _tune, landmarks, scanners, collector, settings, tune_options, area_names
+        )
+    except asyncio.CancelledError:
+        stop.set()
+        raise
+    if collector.capped:
+        report.summary += " " + CAPPED_NOTE.format(count=collector.stored)
+    return report
+
+
+def _tune(
+    landmarks: list[Landmark],
+    scanners: list[Scanner],
+    collector: SampleCollector,
+    settings: Settings,
+    tune_options: TuneOptions,
+    area_names: dict[str, str] | None,
+) -> TuneReport:
+    """Executor job: the collector is stopped, so its readings no longer change."""
+    return evaluate(landmarks, scanners, collector.samples, settings, tune_options, area_names=area_names)
+
+
+def _write_export(
+    path: str,
+    landmarks: list[Landmark],
+    scanners: list[Scanner],
+    settings: Settings,
+    collector: SampleCollector,
+    area_names: dict[str, str] | None,
+) -> None:
+    """Executor job: build and write the export file (both can take a while on a big run)."""
+    _write_json(path, export_dict(landmarks, scanners, settings, collector.samples, area_names))
 
 
 def _write_json(path: str, data: dict) -> None:

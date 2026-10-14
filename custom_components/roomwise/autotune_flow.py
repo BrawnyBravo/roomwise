@@ -20,6 +20,9 @@ from .autotune_ha import (
     CONF_AUTOTUNE_LANDMARKS,
     DEFAULT_AUTOTUNE_MINUTES,
     EXPORT_FILENAME,
+    MAX_AUTOTUNE_DEVICE_MINUTES,
+    MAX_AUTOTUNE_LANDMARKS,
+    MAX_AUTOTUNE_MINUTES,
     async_run_autotune,
     candidates,
     discover,
@@ -54,41 +57,59 @@ class AutotuneOptionsMixin:
 
     async def async_step_autotune(self, user_input: dict[str, Any] | None = None):
         """Step 1: tick the devices that never move; choose how long to listen."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._autotune_minutes = float(user_input[CONF_AUTOTUNE_MINUTES])
-            self._autotune_export = bool(user_input.get(CONF_AUTOTUNE_EXPORT, False))
-            self._autotune_selected = [a.lower() for a in user_input.get(CONF_AUTOTUNE_SELECTED, [])]
-            return await self.async_step_autotune_rooms()
+            minutes = float(user_input[CONF_AUTOTUNE_MINUTES])
+            selected = [a.lower() for a in user_input.get(CONF_AUTOTUNE_SELECTED, [])]
+            # Bound the work: memory for the readings and CPU for the fair test.
+            if len(selected) > MAX_AUTOTUNE_LANDMARKS:
+                errors["base"] = "autotune_too_many_devices"
+            elif len(selected) * minutes > MAX_AUTOTUNE_DEVICE_MINUTES:
+                errors["base"] = "autotune_too_long"
+            else:
+                self._autotune_minutes = minutes
+                self._autotune_export = bool(user_input.get(CONF_AUTOTUNE_EXPORT, False))
+                self._autotune_selected = selected
+                return await self.async_step_autotune_rooms()
 
-        found = discover(self.hass, self.coordinator)
-        self._autotune_found = found
-        cands = candidates(self.coordinator, found, self.options.get(CONF_AUTOTUNE_LANDMARKS, {}))
-        self._autotune_candidates = {c.address: c for c in cands}
+        if self._autotune_found is None or user_input is None:
+            self._autotune_found = discover(self.hass, self.coordinator)
+            cands = candidates(self.coordinator, self._autotune_found, self.options.get(CONF_AUTOTUNE_LANDMARKS, {}))
+            self._autotune_candidates = {c.address: c for c in cands}
+        found = self._autotune_found
+        cands = list((self._autotune_candidates or {}).values())
+        if user_input is not None:
+            ticked = [a.lower() for a in user_input.get(CONF_AUTOTUNE_SELECTED, [])]
+            minutes_default = float(user_input[CONF_AUTOTUNE_MINUTES])
+        else:
+            ticked = [c.address for c in cands if c.suggested]
+            minutes_default = DEFAULT_AUTOTUNE_MINUTES
         scanner_rooms = sorted({found.area_names.get(s.area, s.area) for s in found.scanners if s.area})
         return self.async_show_form(
             step_id="autotune",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_AUTOTUNE_SELECTED, default=[c.address for c in cands if c.suggested]
-                    ): SelectSelector(
+                    vol.Optional(CONF_AUTOTUNE_SELECTED, default=ticked): SelectSelector(
                         SelectSelectorConfig(
                             options=[SelectOptionDict(value=c.address, label=c.label) for c in cands],
                             multiple=True,
                         )
                     ),
-                    vol.Required(CONF_AUTOTUNE_MINUTES, default=DEFAULT_AUTOTUNE_MINUTES): vol.All(
-                        vol.Coerce(float), vol.Range(min=1, max=60)
+                    vol.Required(CONF_AUTOTUNE_MINUTES, default=minutes_default): vol.All(
+                        vol.Coerce(float), vol.Range(min=1, max=MAX_AUTOTUNE_MINUTES)
                     ),
                     vol.Optional(CONF_AUTOTUNE_EXPORT, default=False): bool,
                 }
             ),
+            errors=errors,
             description_placeholders={
                 "candidate_count": str(len(cands)),
                 "suggested_count": str(sum(c.suggested for c in cands)),
                 "scanner_count": str(len(found.scanners)),
                 "scanner_rooms": ", ".join(scanner_rooms) or "-",
                 "export_file": EXPORT_FILENAME,
+                "max_devices": str(MAX_AUTOTUNE_LANDMARKS),
+                "max_device_minutes": str(MAX_AUTOTUNE_DEVICE_MINUTES),
             },
         )
 
