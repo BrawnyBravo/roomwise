@@ -109,6 +109,9 @@ class BermudaDevice(dict):
         self.area_distance: float | None = None  # how far this dev is from that area
         self.area_rssi: float | None = None  # rssi from closest scanner
         self.area_advert: BermudaAdvert | None = None  # currently closest BermudaScanner
+        # (scanner address, since when) while area_advert reads beyond its max radius
+        # but is kept by the exit margin (coordinator._refresh_area_by_min_distance).
+        self.area_beyond_range: tuple[str, float] | None = None
 
         self.floor: fr.FloorEntry | None = None
         self.floor_id: str | None = None

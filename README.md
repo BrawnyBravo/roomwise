@@ -167,7 +167,11 @@ many real ones. It only ever proposes changes; you decide whether to apply them.
 
 ### What it does
 
-Roomwise puts a device in the room of the nearest proxy (receiver) that is within range. Proxies
+Roomwise puts a device in the room of the nearest proxy (receiver) that is within range (the max
+radius). Once a device is in a room it keeps it until it reads beyond 1.3 times the max radius, or
+stays beyond the max radius for 30 seconds, so a device near the edge does not flicker between the
+room and "unplaced" (while it is kept only by that margin, any other proxy within range takes it
+over). Proxies
 differ (antenna, case, placement), so one may "hear" devices louder than another and steal them
 from the room next door. Auto-tune listens to devices that never move and whose room you know, then
 works out a per-proxy signal offset (the same setting as **Calibration 2**) that puts as many of them

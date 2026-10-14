@@ -30,6 +30,7 @@ def _select(adverts, incumbent_scanner=None, scanner_radius=None, max_radius=GLO
     device = SimpleNamespace(
         name="device",
         area_advert=adverts.get(incumbent_scanner),
+        area_beyond_range=None,
         adverts=adverts,
         diag_area_switch=None,
         apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
@@ -58,10 +59,10 @@ def test_incumbent_beyond_global_radius_is_released():
 
 
 def test_out_of_range_incumbent_loses_to_nearby_valid_receiver_without_hysteresis():
-    """Only 12% closer (below the 30% outright margin), but the incumbent is beyond its own range."""
+    """Only 24% closer (below the 30% outright margin), but the incumbent is beyond its range and exit margin."""
     now = monotonic_time_coarse()
     adverts = {
-        "under": _advert("under", "Den", 4.0, now),
+        "under": _advert("under", "Den", 4.5, now),
         "kitchen": _advert("kitchen", "Kitchen", 3.55, now),
     }
     assert _select(adverts, incumbent_scanner="under", scanner_radius={"under": 3.0}) == "kitchen"

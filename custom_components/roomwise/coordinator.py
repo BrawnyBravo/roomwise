@@ -57,6 +57,8 @@ from .const import (
     _LOGGER,
     _LOGGER_SPAM_LESS,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
+    AREA_EXIT_RADIUS_FACTOR,
+    AREA_EXIT_SECONDS,
     AREA_MAX_AD_AGE,
     BDADDR_TYPE_NOT_MAC48,
     BDADDR_TYPE_RANDOM_RESOLVABLE,
@@ -1363,20 +1365,42 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         _scanner_radius = self.options.get(CONF_SCANNER_MAX_RADIUS) or {}  # set by auto-tune
         nowstamp = monotonic_time_coarse()
 
-        def _beyond_range(advert: BermudaAdvert) -> bool:
+        def _range_limit(advert: BermudaAdvert) -> float:
             # A per-receiver limit can only shrink the range: if the global max
             # radius was lowered after auto-tune saved a larger value, the global wins.
-            limit = min(_scanner_radius.get(advert.scanner_address, _max_radius), _max_radius)
-            return advert.rssi_distance is not None and advert.rssi_distance > limit
+            return min(_scanner_radius.get(advert.scanner_address, _max_radius), _max_radius)
+
+        def _beyond_range(advert: BermudaAdvert) -> bool:
+            return advert.rssi_distance is not None and advert.rssi_distance > _range_limit(advert)
 
         # The current room's receiver must still be in range. Without this, a
         # device that once came within range of a receiver (a noise dip near a
         # trimmed receiver's cut-off) would stay assigned to it for as long as no
         # other receiver hears it, ignoring both the global and the per-receiver
-        # max radius. An out-of-range incumbent is treated as invalid, exactly
-        # like a challenger that is too far away.
+        # max radius.
+        #
+        # It gets an exit margin, though: challengers must be within the plain
+        # limit to win, but the incumbent is only released once it reads beyond
+        # limit x AREA_EXIT_RADIUS_FACTOR, or has stayed beyond the plain limit
+        # for AREA_EXIT_SECONDS. A hard cut-off at the same distance both ways
+        # made devices whose smoothed readings sit near the edge flip between
+        # the room and "unplaced" hundreds of times an hour. While it is held
+        # inside that margin the incumbent is "weak": any valid challenger takes
+        # over without the usual switching hysteresis, so the margin only ever
+        # delays "unplaced", never a move to a receiver that is in range.
+        incumbent_held = False
         if incumbent is not None and _beyond_range(incumbent):
-            incumbent = None
+            beyond = device.area_beyond_range
+            if beyond is None or beyond[0] != incumbent.scanner_address:
+                beyond = (incumbent.scanner_address, nowstamp)
+            if (
+                incumbent.rssi_distance > _range_limit(incumbent) * AREA_EXIT_RADIUS_FACTOR
+                or nowstamp - beyond[1] >= AREA_EXIT_SECONDS
+            ):
+                incumbent = None
+            else:
+                incumbent_held = True
+        device.area_beyond_range = beyond if incumbent_held else None
 
         tests = self.AreaTests()
         tests.device = device.name
@@ -1419,6 +1443,16 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 continue
 
             # At this point the challenger is a vaild contender...
+
+            # An incumbent kept only by the exit margin yields to any valid challenger.
+            if incumbent_held:
+                tests.scannername = (incumbent.name, challenger.name)
+                tests.areas = (incumbent.area_name or "", challenger.area_name or "")
+                tests.distance = (incumbent.rssi_distance, challenger.rssi_distance)
+                tests.reason = "WIN against an incumbent beyond its max radius"
+                incumbent = challenger
+                incumbent_held = False
+                continue
 
             # Is the incumbent a valid contender?
 

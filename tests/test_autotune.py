@@ -12,6 +12,7 @@ from bluetooth_data_tools import monotonic_time_coarse
 from custom_components.roomwise import autotune as at
 from custom_components.roomwise import util
 from custom_components.roomwise.bermuda_advert import BermudaAdvert
+from custom_components.roomwise.const import AREA_EXIT_RADIUS_FACTOR
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
 # A synthetic single-storey house: four rooms on a 6 m grid, one scanner in each.
@@ -70,8 +71,13 @@ def test_distance_matches_advert_raw_distance(offset):
     assert at.estimated_distance(settings, "scn", -73) == pytest.approx(expected, rel=1e-12)
 
 
-def _run_coordinator_area_rule(heard: dict[str, float], scanners: dict[str, at.Scanner], settings: at.Settings):
-    """Run the real coordinator area loop once, from no incumbent, on fake adverts."""
+def _run_coordinator_area_rule(
+    heard: dict[str, float],
+    scanners: dict[str, at.Scanner],
+    settings: at.Settings,
+    incumbent: str | None = None,
+):
+    """Run the real coordinator area loop once on fake adverts, from no incumbent unless one is given."""
     now = monotonic_time_coarse()
     adverts = {}
     for sid, rssi in heard.items():
@@ -89,7 +95,8 @@ def _run_coordinator_area_rule(heard: dict[str, float], scanners: dict[str, at.S
     chosen = {}
     device = SimpleNamespace(
         name="landmark",
-        area_advert=None,
+        area_advert=adverts.get(incumbent) if incumbent else None,
+        area_beyond_range=None,
         adverts=adverts,
         diag_area_switch=None,
         apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
@@ -121,6 +128,52 @@ def test_predict_area_matches_coordinator():
         assert ours == theirs, (heard, settings)
         checked += 1
     assert checked == 300
+
+
+def test_exit_factor_matches_coordinator():
+    assert at.COORDINATOR_EXIT_RADIUS_FACTOR == AREA_EXIT_RADIUS_FACTOR
+
+
+def test_holding_area_matches_coordinator_exit_margin():
+    """
+    holding_area is None exactly when the coordinator leaves the device unplaced
+    whichever receiver held it before (within the exit time limit).
+    """
+    rnd = random.Random(11)
+    scanners = {s.id: s for s in SCANNERS}
+    held_somewhere = released_everywhere = 0
+    for _ in range(300):
+        settings = at.Settings(-55.0, 3.0, rnd.choice([4.0, 6.0, 20.0]), {s: rnd.randint(-6, 6) for s in scanners})
+        if rnd.random() < 0.5:
+            settings.radii = {rnd.choice(sorted(scanners)): rnd.choice([1.5, 3.0, 5.0])}
+        # Readings mostly beyond the plain radius, some inside the exit margin,
+        # kept off the exact boundaries.
+        heard = {}
+        for sid in rnd.sample(sorted(scanners), k=rnd.randint(1, 4)):
+            ratio = rnd.choice([0.5, 1.1, 1.2, 1.4, 2.0, 3.0])
+            dist = settings.radius(sid) * ratio
+            heard[sid] = settings.ref_power - 10 * settings.attenuation * math.log10(dist) - settings.offset(sid)
+        outcomes = [_run_coordinator_area_rule(heard, scanners, settings, incumbent=sid) for sid in heard]
+        outcomes.append(_run_coordinator_area_rule(heard, scanners, settings))
+        if at.holding_area(heard, scanners, settings) is None:
+            assert all(o is None for o in outcomes), (heard, settings)
+            released_everywhere += 1
+        else:
+            assert any(o is not None for o in outcomes), (heard, settings)
+            held_somewhere += 1
+    assert held_somewhere > 50
+    assert released_everywhere > 50
+
+
+def test_holding_area_counts_the_exit_margin():
+    """Beyond the radius but inside the margin: may be kept (counts as misplaced); beyond the margin: unplaced."""
+    scanners = {"a": at.Scanner("a", "Kitchen")}
+    settings = at.Settings(-55.0, 3.0, 6.0, {})
+    cut = settings.rssi_cutoff()
+    margin = 10 * 3.0 * math.log10(at.COORDINATOR_EXIT_RADIUS_FACTOR)
+    assert at.predict_area({"a": cut - 1}, scanners, settings)[0] is None  # cannot enter
+    assert at.holding_area({"a": cut - 1}, scanners, settings) == "Kitchen"  # but may be kept
+    assert at.holding_area({"a": cut - margin - 0.1}, scanners, settings) is None
 
 
 def test_margin_matches_coordinator_hysteresis():
@@ -381,8 +434,11 @@ def test_receiver_under_a_room_without_one_is_explained_and_range_trimmed():
     assert report.misplaced_after < report.misplaced_before
     assert report.recommend
     assert report.proposed.radius("b") < 20.0
-    # Any other trims are gentle: every scanner keeps at least 4 m.
-    assert all(report.proposed.radius(s) >= 4.0 for s in ("b", "k", "h"))
+    # Trims are gentle. The basement needs 3 m: study devices read about 4.3 m
+    # from it, and the receiver holding a device keeps it out to max radius x
+    # the exit margin (1.3), so 4 m would still let it hold them once captured.
+    assert report.proposed.radius("b") >= 3.0
+    assert all(report.proposed.radius(s) >= 4.0 for s in ("k", "h"))
     # The trimmed radius still keeps every basement device in the basement.
     scanner_map = {s.id: s for s in scanners}
     for lm in landmarks:

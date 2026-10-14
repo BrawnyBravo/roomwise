@@ -71,6 +71,15 @@ DISTANCE_INFINITE = 999  # arbitrary distance for infinite/unknown rssi range
 AREA_MAX_AD_AGE: Final = max(DISTANCE_TIMEOUT / 3, UPDATE_INTERVAL * 2)
 # Adverts older than this can not win an area contest.
 
+# Exit margin for the max radius. A receiver must be within its max radius to
+# win a device's area, but the receiver that already holds the device only
+# loses it when the device reads beyond max radius x AREA_EXIT_RADIUS_FACTOR,
+# or has stayed beyond the plain max radius for AREA_EXIT_SECONDS. Without
+# this, a device whose (noisy) readings sit near the edge flips between the
+# area and "unplaced" hundreds of times an hour. Mirrored in autotune.py.
+AREA_EXIT_RADIUS_FACTOR: Final = 1.3
+AREA_EXIT_SECONDS: Final = 30.0
+
 # Beacon-handling constants. Source devices are tracked by MAC-address and are the
 # originators of beacon-like data. We then create a "meta-device" for the beacon's
 # uuid. Other non-static-mac protocols should use this method as well, by adding their

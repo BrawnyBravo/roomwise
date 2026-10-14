@@ -10,6 +10,10 @@ How Roomwise picks a room (see coordinator._refresh_area_by_min_distance):
 
     The device goes to the area of the nearest scanner that has an area and whose
     distance is within that scanner's max radius (plus hysteresis when switching).
+    The scanner that already holds the device keeps it until the device reads
+    beyond max radius x COORDINATOR_EXIT_RADIUS_FACTOR (or stays beyond the
+    plain max radius for 30 s): entering needs the plain radius, leaving needs
+    the wider one.
 
 Consequences that shape the tuner:
 
@@ -44,6 +48,11 @@ from statistics import median
 # distance differs from the incumbent's by more than this percentage
 # difference (pdiff_outright in coordinator._refresh_area_by_min_distance).
 COORDINATOR_PDIFF_OUTRIGHT = 0.30
+# The coordinator's exit margin: the scanner that holds a device keeps it until
+# the device reads beyond its max radius times this (AREA_EXIT_RADIUS_FACTOR in
+# const.py). So a device is only reliably left unplaced when every scanner with
+# an area reads it beyond that wider distance.
+COORDINATOR_EXIT_RADIUS_FACTOR = 1.3
 
 DEFAULT_MIN_SAMPLES = 5  # fewer readings than this for a pair and we ignore the pair
 DEFAULT_OFFSET_LIMIT = 15  # dB, tuned offsets stay within +/- this (current value always allowed)
@@ -246,6 +255,31 @@ def predict_area(
     return scanners[best[0]].area, best[0]
 
 
+def holding_area(heard: dict[str, float], scanners: dict[str, Scanner], settings: Settings) -> str | None:
+    """
+    The room the coordinator may keep a device in, given the exit margin.
+
+    Used for devices in a room with no scanner, which should be left unplaced.
+    The coordinator lets a scanner keep a device until it reads beyond max
+    radius x COORDINATOR_EXIT_RADIUS_FACTOR, and a device near the edge does
+    get captured now and then (a noise dip inside the plain radius). So the
+    device is only reliably unplaced when no scanner with an area reads it
+    within that wider distance. Returns the area of the nearest such scanner
+    (a tie goes to the lowest scanner id), or None when it is reliably unplaced.
+    """
+    found: tuple[float, str] | None = None
+    for scanner_id, rssi in heard.items():
+        scanner = scanners.get(scanner_id)
+        if scanner is None or scanner.area is None:
+            continue
+        dist = estimated_distance(settings, scanner_id, rssi)
+        if dist > settings.radius(scanner_id) * COORDINATOR_EXIT_RADIUS_FACTOR:
+            continue
+        if found is None or (dist, scanner_id) < found:
+            found = (dist, scanner_id)
+    return None if found is None else scanners[found[1]].area
+
+
 # --------------------------------------------------------------------------
 # Aggregation
 # --------------------------------------------------------------------------
@@ -333,14 +367,14 @@ def _landmark_cost(
 
 def _outsider_cost(heard: dict[str, float], scanners: dict[str, Scanner], settings: Settings) -> float:
     """A device in a room with no scanner should be left unplaced rather than put in a wrong room."""
-    area, _ = predict_area(heard, scanners, settings)
-    cost = 0.0 if area is None else OUTSIDER_WEIGHT
-    # A little extra per receiver that still has it in range, so trimming one
+    cost = 0.0 if holding_area(heard, scanners, settings) is None else OUTSIDER_WEIGHT
+    # A little extra per receiver that could still hold it, so trimming one
     # receiver at a time can make progress when several over-hear the room.
     for scanner_id, rssi in heard.items():
         scanner = scanners.get(scanner_id)
         if scanner is not None and scanner.area is not None:
-            if estimated_distance(settings, scanner_id, rssi) <= settings.radius(scanner_id):
+            limit = settings.radius(scanner_id) * COORDINATOR_EXIT_RADIUS_FACTOR
+            if estimated_distance(settings, scanner_id, rssi) <= limit:
                 cost += OUTSIDER_IN_RANGE_WEIGHT
     return cost
 
@@ -508,6 +542,13 @@ def fit(  # noqa: C901 - coordinate descent in two stages, kept in one place on 
 FitFunc = Callable[..., Settings]
 
 
+def _judged_area(res: LandmarkResult, scanner_map: dict[str, Scanner], settings: Settings) -> str | None:
+    """Device in a room with a scanner: where it goes. Outsider: where it may be kept (see holding_area)."""
+    if res.outsider:
+        return holding_area(res.heard_by, scanner_map, settings)
+    return predict_area(res.heard_by, scanner_map, settings)[0]
+
+
 def evaluate(
     landmarks: Iterable[Landmark],
     scanners: Iterable[Scanner],
@@ -559,7 +600,7 @@ def evaluate(
     for res in results:
         if not (res.scored or res.outsider):
             continue
-        res.before_area, _ = predict_area(res.heard_by, scanner_map, current)
+        res.before_area = _judged_area(res, scanner_map, current)
         if res.outsider and not options.tune_radius:
             res.after_area = res.before_area
         else:
@@ -583,7 +624,7 @@ def evaluate(
             {other.id: medians[other.id] for other in training}, training, scanners, current, options
         )
         for res in group:
-            res.after_area, _ = predict_area(res.heard_by, scanner_map, loo_settings)
+            res.after_area = _judged_area(res, scanner_map, loo_settings)
 
     for res in results:
         if not (res.scored or res.outsider):

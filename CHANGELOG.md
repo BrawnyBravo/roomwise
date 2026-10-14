@@ -19,7 +19,9 @@ Ashley Gittins ([agittins](https://github.com/agittins)), MIT licence, from Berm
 ### Fixed
 
 - Max radius now also applies to the proxy a device is currently assigned to, so a device that moves out of range
-  is released instead of staying in the old room while no other proxy hears it.
+  is released instead of staying in the old room while no other proxy hears it. That proxy has an exit margin: a
+  device enters a room within the max radius but only leaves it beyond 1.3 times the max radius, or after 30
+  seconds beyond the max radius, so a device near the edge does not flicker between the room and "unplaced".
 - Download diagnostics no longer fails on installs with Bluetooth history, and redacts device addresses inside
   Bluetooth device objects too.
 - Diagnostics redaction is linear in size, covers every address format, and runs off the event loop.
