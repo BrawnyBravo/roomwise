@@ -300,7 +300,7 @@ def test_landmarks_in_rooms_without_a_scanner_are_listed_not_scored():
     assert res.reason == "no scanner in this room"
     assert report.scored == len(landmarks)
     assert all("hall_lamp" not in s for s in seen_training)
-    assert "1 other device could not be checked" in report.summary
+    assert "1 other device could not be checked (no receiver in the room)." in report.summary
     assert res.outsider
     assert report.per_area()["Hallway"]["scored"] == 0
 
@@ -444,6 +444,21 @@ def test_receiver_under_a_room_without_one_is_explained_and_range_trimmed():
     for lm in landmarks:
         if lm.area == "Basement":
             assert at.predict_area(medians[lm.id], scanner_map, report.proposed)[0] == "Basement"
+
+
+def test_summary_counts_each_unchecked_device_once():
+    """Devices in rooms without a receiver get their own sentence; "other devices" must not count them again."""
+    scanners, medians, landmarks = _under_study_house(-74)
+    settings = at.Settings(-55.0, 3.0, 20.0, {})
+    report = at.evaluate(landmarks, scanners, None, settings, medians=medians)
+    assert report.recommend
+    assert "Of 3 devices in rooms without a receiver" in report.summary
+    assert "could not be checked" not in report.summary  # every chosen device is already accounted for
+
+    extra = [at.Landmark("ghost", "Kitchen", "ghost"), at.Landmark("nowhere", None, "nowhere")]
+    report = at.evaluate([*landmarks, *extra], scanners, None, settings, medians=medians)
+    assert "Of 3 devices in rooms without a receiver" in report.summary
+    assert "2 other devices could not be checked (no room set or not heard)." in report.summary
 
 
 def test_receiver_under_a_louder_room_says_only_a_new_receiver_helps():

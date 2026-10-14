@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1 (2026-10-14)
+
+### Fixed
+
+- Auto-tune and "Reset auto-tune settings" show each receiver by its name instead of an address. A proxy whose
+  network address is also listed by another integration (a router, say) no longer takes that integration's
+  address-like name; the name you gave the proxy wins, then its integration's name, then the Bluetooth scanner's
+  name, and only then the address.
+- The auto-tune summary no longer counts devices in rooms without a receiver twice: "other devices could not be
+  checked" now counts only devices not already reported, and gives only the reasons that apply.
+- No more Home Assistant deprecation warning about `device_registry.devices` (it would stop working in Home
+  Assistant 2027.9), and no use of a device's `config_entries` (deprecated in 2026.10, removed in 2027.10).
+
+## 0.1.0 (2026-10-14)
 
 First release of Roomwise, built on [Bermuda BLE Trilateration](https://github.com/agittins/bermuda) by
 Ashley Gittins ([agittins](https://github.com/agittins)), MIT licence, from Bermuda's main branch after v0.8.7.

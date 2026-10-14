@@ -79,6 +79,21 @@ def mac_explode_formats(mac: str) -> set[str]:
     return altmacs
 
 
+_ADDRESS_LIKE_NAME = re.compile(r"(?:[a-z0-9_]*_)?(?:[0-9a-f]{2}[:_.-]?){5}[0-9a-f]{2}")
+
+
+def name_is_address(name: str | None) -> bool:
+    """
+    True if a name is empty or just an address, so not something to show a person.
+
+    Catches "aa:bb:cc:00:00:01" (a device named after its network address by,
+    say, a router integration) and fallbacks like "roomwise_aa_bb_cc_00_00_01".
+    """
+    if not name:
+        return True
+    return _ADDRESS_LIKE_NAME.fullmatch(str(name).strip().lower()) is not None
+
+
 def mac_redact(mac: str, tag: str | None = None) -> str:
     """Remove the centre octets of a MAC and optionally replace with a tag."""
     if tag is None:

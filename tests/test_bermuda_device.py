@@ -5,6 +5,10 @@ Tests for BermudaDevice class in bermuda_device.py.
 import pytest
 from unittest.mock import MagicMock, patch
 from homeassistant.components.bluetooth import BaseHaScanner, BaseHaRemoteScanner
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from custom_components.roomwise.autotune_ha import receiver_name
 from custom_components.roomwise.bermuda_device import BermudaDevice
 from custom_components.roomwise.const import ICON_DEFAULT_AREA, ICON_DEFAULT_FLOOR
 
@@ -189,3 +193,69 @@ def test_public_address_hint_ignored_for_metadevices(mock_coordinator):
     before = device.address_type
     device.async_apply_address_details({"props": {"AddressType": "public"}})
     assert device.address_type == before
+
+
+# --------------------------------------------------------------------------
+# Scanner names and rooms from Home Assistant's device registry
+# --------------------------------------------------------------------------
+
+PROXY_BLE = "aa:bb:cc:00:01:12"  # what the Bluetooth stack reports (Wi-Fi address + 2 on an ESP32)
+PROXY_WIFI = "aa:bb:cc:00:01:10"
+
+
+async def _proxy_in_registry(hass, *, router_device: bool):
+    """An ESP32 proxy as HA sees it: the Bluetooth device, the ESPHome device, and maybe a router's copy."""
+    hall = ar.async_get(hass).async_create("Hall")
+    devreg = dr.async_get(hass)
+    entries = {}
+    for domain in ("bluetooth", "esphome", "router_test"):
+        entries[domain] = MockConfigEntry(domain=domain)
+        entries[domain].add_to_hass(hass)
+    devreg.async_get_or_create(
+        config_entry_id=entries["bluetooth"].entry_id,
+        connections={(dr.CONNECTION_BLUETOOTH, PROXY_BLE.upper())},
+        name=f"Proxy 000110 ({PROXY_BLE.upper()})",
+    )
+    esphome = devreg.async_get_or_create(
+        config_entry_id=entries["esphome"].entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, PROXY_WIFI)},
+        name="Proxy 000110",
+    )
+    devreg.async_update_device(esphome.id, name_by_user="Hall proxy", area_id=hall.id)
+    if router_device:
+        # A router or network-scanner integration lists the proxy's Wi-Fi address too,
+        # named after the address and without a room. Registered last, so it is the last match.
+        devreg.async_get_or_create(
+            config_entry_id=entries["router_test"].entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, PROXY_WIFI)},
+            name=PROXY_WIFI,
+        )
+    coordinator = MagicMock()
+    coordinator.options = {}
+    coordinator.hass = hass
+    coordinator.dr = devreg
+    ha_scanner = MagicMock(spec=BaseHaScanner)
+    ha_scanner.time_since_last_detection.return_value = 5.0
+    ha_scanner.source = PROXY_BLE.upper()
+    ha_scanner.name = f"esp32-proxy-000110 ({PROXY_BLE.upper()})"
+    scanner = BermudaDevice(address=PROXY_BLE, coordinator=coordinator)
+    return scanner, ha_scanner, hall
+
+
+@pytest.mark.parametrize("router_device", [False, True])
+async def test_scanner_takes_the_name_and_room_the_user_gave_it(hass, router_device):
+    """Another integration's copy of the proxy (named after its address) must not hide the user's name."""
+    scanner, ha_scanner, hall = await _proxy_in_registry(hass, router_device=router_device)
+    scanner.async_as_scanner_init(ha_scanner)
+    assert scanner.name == "Hall proxy"
+    assert scanner.area_id == hall.id
+    assert scanner.address_wifi_mac == PROXY_WIFI
+    assert receiver_name(scanner, PROXY_BLE) == "Hall proxy"
+
+
+async def test_scanner_lookup_uses_no_deprecated_registry_calls(hass, ha_deprecation_reports):
+    """`device_registry.devices.get_entries(...)` is deprecated and stops working in HA 2027.9."""
+    scanner, ha_scanner, _hall = await _proxy_in_registry(hass, router_device=True)
+    scanner.async_as_scanner_init(ha_scanner)
+    assert scanner.name == "Hall proxy"
+    assert ha_deprecation_reports() == []

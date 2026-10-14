@@ -26,6 +26,7 @@ from .autotune_ha import (
     async_run_autotune,
     candidates,
     discover,
+    receiver_name,
     settings_to_options,
 )
 from .const import CONF_MAX_RADIUS, CONF_RSSI_OFFSETS, CONF_SCANNER_MAX_RADIUS, DEFAULT_MAX_RADIUS
@@ -228,8 +229,7 @@ class AutotuneOptionsMixin:
         offsets = {k: v for k, v in (self.options.get(CONF_RSSI_OFFSETS) or {}).items() if v}
 
         def receiver(address: str) -> str:
-            device = devices.get(address)
-            return device.name if device is not None and device.name else address.upper()
+            return receiver_name(devices.get(address), address)
 
         if radii:
             radius_lines = "\n".join(

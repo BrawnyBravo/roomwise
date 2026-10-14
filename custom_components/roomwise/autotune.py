@@ -644,8 +644,8 @@ def evaluate(
     after = sum(r.after_ok for r in scored)
     mis_before = sum(not r.before_ok for r in outs)
     mis_after = sum(not r.after_ok for r in outs)
-    unscored = len(results) - n
     changed = _settings_changed(current, proposed)
+    outsiders_told = False  # the devices in rooms without a receiver already have their own sentence
 
     if n < options.min_landmarks:
         recommend = False
@@ -661,16 +661,18 @@ def evaluate(
                 f" Of {len(outs)} devices in rooms without a receiver, {mis_after} are put in the wrong room"
                 f" (was {mis_before})."
             )
+            outsiders_told = True
     else:
         recommend = False
         summary = (
             f"{before} of {n} known devices land in the right room. "
             "Your current settings are already as good as we can get from this data."
         )
+    unscored = [r for r in results if not r.scored and not (outsiders_told and r.outsider)]
     if unscored:
         summary += (
-            f" {unscored} other device{'s' if unscored != 1 else ''} could not be checked"
-            " (no receiver in the room, no room set, or not heard)."
+            f" {len(unscored)} other device{'s' if len(unscored) != 1 else ''} could not be checked"
+            f" ({_why_not_checked(unscored)})."
         )
 
     if folded:
@@ -753,6 +755,21 @@ def explain(report: TuneReport, scanners: dict[str, Scanner], settings: Settings
                     "receiver in its own room in this data."
                 )
     return notes
+
+
+def _why_not_checked(results: Iterable[LandmarkResult]) -> str:
+    """Plain reasons for the devices that could not be checked, only the ones that apply."""
+    results = list(results)
+    reasons = []
+    if any(r.outsider for r in results):
+        reasons.append("no receiver in the room")
+    if any(r.landmark.area is None for r in results):
+        reasons.append("no room set")
+    if any(not r.outsider and r.landmark.area is not None for r in results):
+        reasons.append("not heard")
+    if len(reasons) <= 2:
+        return " or ".join(reasons)
+    return f"{', '.join(reasons[:-1])}, or {reasons[-1]}"
 
 
 def _settings_changed(a: Settings, b: Settings) -> bool:

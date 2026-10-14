@@ -52,12 +52,29 @@ from .const import (
     METADEVICE_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_IBEACON_SOURCE,
 )
-from .util import mac_math_offset, mac_norm
+from .util import mac_math_offset, mac_norm, name_is_address
 
 if TYPE_CHECKING:
     from bleak.backends.scanner import AdvertisementData
+    from homeassistant.helpers.device_registry import DeviceEntry
 
     from .coordinator import BermudaDataUpdateCoordinator
+
+
+def _better_scanner_match(candidate: DeviceEntry, current: DeviceEntry | None) -> bool:
+    """
+    Should this registry device replace the one already matched for a scanner.
+
+    Prefers a device the user named, then one with a room, then one with a
+    real name rather than an address. On a tie the later match wins, as before.
+    """
+    if current is None:
+        return True
+
+    def rank(entry: DeviceEntry) -> tuple[bool, bool, bool]:
+        return (entry.name_by_user is not None, entry.area_id is not None, not name_is_address(entry.name))
+
+    return rank(candidate) >= rank(current)
 
 
 class BermudaDevice(dict):
@@ -357,20 +374,25 @@ class BermudaDevice(dict):
                 connlist.add(("mac", altmac))
                 maclist.add(altmac)
 
-        # Requires 2025.3
-        devreg_devices = self._coordinator.dr.devices.get_entries(None, connections=connlist)
-        devreg_count = 0  # can't len() an iterable.
+        # Every registry device with one of these connections, whichever integration owns it.
+        # (Not `dr.devices.get_entries(...)`: using `devices` as a mapping is deprecated and stops
+        # working in Home Assistant 2027.9.)
+        devreg_devices = self._coordinator.dr.async_get_devices(connections=connlist)
+        devreg_count = 0
         devreg_stringlist = ""  # for debug logging
         for devreg_device in devreg_devices:
             devreg_count += 1
             # _LOGGER.debug("DevregScanner: %s", devreg_device)
             devreg_stringlist += f"** {devreg_device.name_by_user or devreg_device.name}\n"
+            # Other integrations (a router, a network scanner) can list the same
+            # address as a device of their own, often named after the address and
+            # without a room, so prefer the match the user named or placed.
             for conn in devreg_device.connections:
-                if conn[0] == "bluetooth":
+                if conn[0] == "bluetooth" and _better_scanner_match(devreg_device, scanner_devreg_bt):
                     # Bluetooth component's device!
                     scanner_devreg_bt = devreg_device
                     scanner_devreg_bt_address = conn[1].lower()
-                if conn[0] == "mac":
+                if conn[0] == "mac" and _better_scanner_match(devreg_device, scanner_devreg_mac):
                     # ESPHome, Shelly
                     scanner_devreg_mac = devreg_device
                     scanner_devreg_mac_address = conn[1]

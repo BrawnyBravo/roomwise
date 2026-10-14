@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 from homeassistant.config_entries import ConfigEntryState
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import frame
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -21,6 +23,27 @@ from .const import MOCK_CONFIG
 
 
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+@pytest.fixture
+def ha_deprecation_reports(monkeypatch, caplog):
+    """
+    Home Assistant's "Detected that custom integration 'roomwise' ... will stop working" reports.
+
+    Call the returned function after the code under test; it lists the messages.
+    """
+    # HA reports each call site once per run; start afresh so earlier tests cannot hide one.
+    monkeypatch.setattr(frame, "_REPORTED_INTEGRATIONS", set())
+    caplog.set_level(logging.WARNING, logger=frame.__name__)
+
+    def reports() -> list[str]:
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == frame.__name__ and "integration 'roomwise'" in record.getMessage()
+        ]
+
+    return reports
 
 
 @pytest.fixture(autouse=True)
