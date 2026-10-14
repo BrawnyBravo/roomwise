@@ -114,7 +114,8 @@ class Settings:
         return self.offsets.get(scanner_id, 0)
 
     def radius(self, scanner_id: str) -> float:
-        return self.radii.get(scanner_id, self.max_radius)
+        # Same rule as the coordinator: a per-scanner value never exceeds the global one.
+        return min(self.radii.get(scanner_id, self.max_radius), self.max_radius)
 
     def copy(self) -> Settings:
         return Settings(self.ref_power, self.attenuation, self.max_radius, dict(self.offsets), dict(self.radii))
@@ -741,6 +742,17 @@ def format_table(report: TuneReport, scanner_names: dict[str, str] | None = None
             )
         if report.tuned_ref_power and report.proposed.ref_power != report.current.ref_power:
             lines.append(f"| (reference power) | {report.current.ref_power:g} | {report.proposed.ref_power:g} | | |")
+    elif report.current.radii:
+        # Not changing anything, but say which receivers already have a smaller range.
+        names = scanner_names or {}
+        lines += [
+            "",
+            f"Range limits saved earlier (the global max radius is {report.current.max_radius:g} m):",
+            "",
+            "| Scanner | Max radius |",
+            "|---|---:|",
+        ]
+        lines += [f"| {names.get(sid, sid)} | {report.current.radius(sid):g} |" for sid in sorted(report.current.radii)]
     if report.notes:
         lines += [""] + [f"- {note}" for note in report.notes]
     return "\n".join(lines)

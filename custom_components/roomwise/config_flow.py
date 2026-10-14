@@ -192,6 +192,7 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                 "calibration1_global": "Calibration 1: Global",
                 "calibration2_scanners": "Calibration 2: Scanner RSSI Offsets",
                 "autotune": "Auto-tune rooms",
+                "autotune_reset": "Reset auto-tune settings",
             },
             description_placeholders=messages,
         )

@@ -28,6 +28,7 @@ from .autotune_ha import (
     discover,
     settings_to_options,
 )
+from .const import CONF_MAX_RADIUS, CONF_RSSI_OFFSETS, CONF_SCANNER_MAX_RADIUS, DEFAULT_MAX_RADIUS
 
 if TYPE_CHECKING:
     import asyncio
@@ -41,6 +42,9 @@ CONF_AUTOTUNE_MINUTES = "autotune_minutes"
 CONF_AUTOTUNE_APPLY = "autotune_apply"
 CONF_AUTOTUNE_SELECTED = "autotune_selected"
 CONF_AUTOTUNE_EXPORT = "autotune_export"
+CONF_RESET_RADIUS = "reset_scanner_max_radius"
+CONF_RESET_LANDMARKS = "reset_landmarks"
+CONF_RESET_OFFSETS = "reset_rssi_offsets"
 
 
 class AutotuneOptionsMixin:
@@ -205,4 +209,51 @@ class AutotuneOptionsMixin:
             step_id="autotune_result",
             data_schema=vol.Schema(schema),
             description_placeholders={"summary": report.summary, "table": table},
+        )
+
+    async def async_step_autotune_reset(self, user_input: dict[str, Any] | None = None):
+        """Show what auto-tune has saved and undo any part of it."""
+        if user_input is not None:
+            if user_input.get(CONF_RESET_RADIUS):
+                self.options.pop(CONF_SCANNER_MAX_RADIUS, None)
+            if user_input.get(CONF_RESET_LANDMARKS):
+                self.options.pop(CONF_AUTOTUNE_LANDMARKS, None)
+            if user_input.get(CONF_RESET_OFFSETS):
+                self.options[CONF_RSSI_OFFSETS] = {}
+            return await self._update_options()
+
+        devices = getattr(self.coordinator, "devices", {}) or {}
+        global_radius = float(self.options.get(CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS))
+        radii = self.options.get(CONF_SCANNER_MAX_RADIUS) or {}
+        offsets = {k: v for k, v in (self.options.get(CONF_RSSI_OFFSETS) or {}).items() if v}
+
+        def receiver(address: str) -> str:
+            device = devices.get(address)
+            return device.name if device is not None and device.name else address.upper()
+
+        if radii:
+            radius_lines = "\n".join(
+                f"- {receiver(sid)}: {min(float(r), global_radius):g} m" for sid, r in sorted(radii.items())
+            )
+        else:
+            radius_lines = "- none"
+        if offsets:
+            offset_lines = "\n".join(f"- {receiver(sid)}: {v:+g} dB" for sid, v in sorted(offsets.items()))
+        else:
+            offset_lines = "- none (all 0)"
+        return self.async_show_form(
+            step_id="autotune_reset",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_RESET_RADIUS, default=bool(radii)): bool,
+                    vol.Optional(CONF_RESET_LANDMARKS, default=False): bool,
+                    vol.Optional(CONF_RESET_OFFSETS, default=False): bool,
+                }
+            ),
+            description_placeholders={
+                "radius_lines": radius_lines,
+                "global_radius": f"{global_radius:g}",
+                "landmark_count": str(len(self.options.get(CONF_AUTOTUNE_LANDMARKS) or {})),
+                "offset_lines": offset_lines,
+            },
         )

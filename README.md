@@ -6,11 +6,12 @@ Roomwise tells Home Assistant which room (Area) each of your Bluetooth devices i
 [ESPHome Bluetooth Proxies](https://esphome.io/components/bluetooth_proxy.html), Shelly Gen2+ devices
 or local Bluetooth adapters you already have.
 
-Its lead feature is **self-tuning rooms (coming in 0.1)**: instead of hand-adjusting signal offsets
-for every proxy, Roomwise will learn them from devices whose room you already know (a smart plug,
-a TV, a speaker) and only offer the new settings when they put more of those devices in the right
-room than before. Until that ships, Roomwise works like the Bermuda version it is built on, with
-manual calibration.
+Its lead feature is **Auto-tune rooms** (new in 0.1, experimental): instead of hand-adjusting
+signal offsets for every proxy, Roomwise learns them from devices whose room you already know (a
+smart plug, a TV, a speaker) and only offers the new settings when they put more of those devices
+in the right room than before. Nothing changes unless you press Apply, and it can be undone. See
+[Auto-tune rooms](#auto-tune-rooms) below. Everything else works like the Bermuda version it is
+built on, including manual calibration.
 
 [![License][license-shield]](LICENSE)
 [![HomeAssistant Minimum Version][haminverbadge]][haminver]
@@ -61,6 +62,7 @@ Bermuda for a while, then move your automations over and remove Bermuda.
 - Supports IRK (resolvable keys) via the [Private BLE Device](https://www.home-assistant.io/integrations/private_ble_device/) core integration. Once your iOS (or Android) device is set up in Private BLE Device, it can be selected in Roomwise too.
 - Creates `device_tracker` entities for chosen devices, which can be linked to People for Home/Not Home tracking.
 - Configurable settings for RSSI reference level, environmental attenuation, maximum tracking radius and per-proxy RSSI offsets.
+- Auto-tune rooms: proposes per-proxy offsets (and, where it helps, a smaller range for a proxy) from devices that never move.
 - Provides a full JSON/YAML dump of devices and their distances from each Bluetooth receiver, via the `roomwise.dump_devices` action.
 
 ## What you need
@@ -140,6 +142,70 @@ The sensor information also includes attributes such as the area name and id, an
 In Settings, People, you can use a Roomwise device tracker for any person's home/away status.
 
 ![Assigning a tracker for Person tracking](img/screenshots/person-tracker.png)
+
+## Auto-tune rooms
+
+Auto-tune is new in 0.1 and still experimental: it has been tested on made-up houses, not yet on
+many real ones. It only ever proposes changes; you decide whether to apply them.
+
+### What it does
+
+Roomwise puts a device in the room of the nearest proxy (receiver) that is within range. Proxies
+differ (antenna, case, placement), so one may "hear" devices louder than another and steal them
+from the room next door. Auto-tune listens to devices that never move and whose room you know, then
+works out a per-proxy signal offset (the same setting as **Calibration 2**) that puts as many of them
+as possible in their own room.
+
+If a device sits in a room that has no proxy of its own, the best Roomwise can do is leave it
+unplaced rather than put it in the wrong room. Where that helps, auto-tune may also propose a
+smaller **range limit for one proxy** (never larger than the global max radius, never below 2 m, and
+never at the cost of a device in that proxy's own room). A typical case is a proxy directly under a
+room that has none: devices upstairs are heard best by the proxy below and land in the wrong room. A
+smaller range on that proxy can leave them unplaced instead. If they are louder than the proxy's own
+room, no setting can tell them apart, and auto-tune says so: the fix is a proxy in that room.
+
+Each device is judged fairly: its "after" result uses settings tuned without that device (with many
+devices, without its group). Auto-tune only recommends a change when more devices land in the right
+room than with your current settings (or as many, with fewer devices in proxy-less rooms misplaced).
+
+### How to run it
+
+1. Every proxy needs an Area, and so does each device you pick.
+2. Go to **Settings, Devices & Services, Roomwise, Configure, Auto-tune rooms**.
+3. Tick devices that **never move**: smart plugs, light bulbs, TVs, speakers, appliances. Devices
+   Home Assistant already knows the room of are pre-ticked. Do not tick phones, watches, tags, or
+   anything carried around. A few devices in each room with a proxy is ideal; up to 60 devices, and
+   devices x minutes up to 1200.
+4. Confirm each device's room, then **keep the dialog open** while it listens (10 minutes is a good
+   start). Closing the dialog cancels the run and changes nothing.
+5. Read the result: a per-room table (right now vs right after tuning), the proposed offsets and range
+   limits, and plain-language notes about rooms it cannot fix.
+
+### What Apply saves
+
+Apply saves exactly three things in Roomwise's options:
+
+- **Per-proxy signal offsets** shown in the result (the same values you can edit in Calibration 2).
+- **Per-proxy range limits** shown in the result. These replace any saved by an earlier run. A proxy
+  shown at the global max radius has no limit. A saved limit never exceeds the global max radius,
+  even if you lower the global value later.
+- **The devices you picked and their rooms**, so they are ticked next time.
+
+Nothing is saved if you close the dialog or untick Apply.
+
+### How to undo it
+
+Open **Configure, Reset auto-tune settings**. It lists the saved per-proxy range limits, the current
+offsets and the number of remembered devices, and lets you remove the range limits, forget the
+devices, and/or set every offset back to 0 (that also clears offsets you set by hand). You can also
+edit offsets directly in Calibration 2.
+
+### The optional export file
+
+Ticking "Also save the raw readings to a file" writes `roomwise_autotune_samples.json` to your Home
+Assistant config folder, for troubleshooting or offline replay. **This file is not redacted**: it
+contains the Bluetooth addresses and names of your devices and proxies, and your room names. Do not
+post it publicly. Delete it when you are done.
 
 ## Using the `roomwise.dump_devices` action
 

@@ -94,7 +94,7 @@
         },
         "data_description": {
           "autotune_minutes": "10 minutes is a good start. Longer gives steadier numbers. Up to {max_devices} devices, and devices x minutes up to {max_device_minutes}.",
-          "autotune_export": "Writes {export_file} in your Home Assistant config folder, for troubleshooting. It contains device addresses and room names."
+          "autotune_export": "Writes {export_file} in your Home Assistant config folder, for troubleshooting. It is not redacted: it contains device addresses, names and room names, so do not post it publicly."
         }
       },
       "autotune_result": {
@@ -104,12 +104,26 @@
           "autotune_apply": "Apply these settings"
         },
         "data_description": {
-          "autotune_apply": "Saves the new scanner offsets, the same values you could set by hand in Calibration 2."
+          "autotune_apply": "Saves three things: the per-receiver signal offsets in the table above (the same setting as Calibration 2), the per-receiver range limits in the table above (replacing any saved earlier; a receiver shown at the global max radius has no limit), and the list of devices you picked, so they are ticked next time. To undo, use \"Reset auto-tune settings\" in the options menu."
         }
       },
       "autotune_rooms": {
         "title": "Confirm rooms",
         "description": "Pick the room each of the {count} devices is in. Leave a room empty to skip that device. Keep this window open while Roomwise listens."
+      },
+      "autotune_reset": {
+        "title": "Reset auto-tune settings",
+        "description": "Settings auto-tune may have saved:\n\n**Per-receiver range limits** (the global max radius is {global_radius} m):\n{radius_lines}\n\n**Receiver signal offsets** (also editable in Calibration 2):\n{offset_lines}\n\n**Remembered devices that never move:** {landmark_count}\n\nTick what to reset, then Submit. Nothing else is changed.",
+        "data": {
+          "reset_scanner_max_radius": "Remove all per-receiver range limits",
+          "reset_landmarks": "Forget the remembered devices",
+          "reset_rssi_offsets": "Set every receiver offset back to 0"
+        },
+        "data_description": {
+          "reset_scanner_max_radius": "Every receiver goes back to the global max radius.",
+          "reset_landmarks": "Auto-tune will no longer pre-tick them.",
+          "reset_rssi_offsets": "This also clears offsets you set by hand in Calibration 2."
+        }
       }
     },
     "progress": {

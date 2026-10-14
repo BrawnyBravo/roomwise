@@ -1364,9 +1364,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         nowstamp = monotonic_time_coarse()
 
         def _beyond_range(advert: BermudaAdvert) -> bool:
-            return advert.rssi_distance is not None and advert.rssi_distance > _scanner_radius.get(
-                advert.scanner_address, _max_radius
-            )
+            # A per-receiver limit can only shrink the range: if the global max
+            # radius was lowered after auto-tune saved a larger value, the global wins.
+            limit = min(_scanner_radius.get(advert.scanner_address, _max_radius), _max_radius)
+            return advert.rssi_distance is not None and advert.rssi_distance > limit
 
         # The current room's receiver must still be in range. Without this, a
         # device that once came within range of a receiver (a noise dip near a
