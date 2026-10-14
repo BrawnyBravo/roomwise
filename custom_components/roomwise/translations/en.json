@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Roomwise",
-        "description": "If you need help with the configuration have a look at our [GitHub page](https://github.com/BrawnyBravo/roomwise)",
+        "description": "If you need help with the configuration have a look at our [GitHub page]({url})",
         "data": {
           "username": "Username",
           "password": "Password"

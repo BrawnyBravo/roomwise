@@ -22,7 +22,8 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 VERSION = "0.0.0"
 
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
-ISSUE_URL = "https://github.com/BrawnyBravo/roomwise/issues"
+DOCS_URL = "https://github.com/BrawnyBravo/roomwise"  # shown in the setup form via the {url} placeholder
+ISSUE_URL = f"{DOCS_URL}/issues"
 
 # Icons
 ICON = "mdi:format-quote-close"

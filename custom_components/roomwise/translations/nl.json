@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Roomwise",
-        "description": "Als je hulp nodig hebt met de configuratie, kijk dan op onze [GitHub pagina](https://github.com/BrawnyBravo/roomwise)",
+        "description": "Als je hulp nodig hebt met de configuratie, kijk dan op onze [GitHub pagina]({url})",
         "data": {
           "username": "Gebruikersnaam",
           "password": "Wachtwoord"
