@@ -118,3 +118,20 @@ async def test_reset_can_clear_offsets_only(hass: HomeAssistant, setup_bermuda_e
     options = setup_bermuda_entry.options
     assert options[CONF_RSSI_OFFSETS] == {}
     assert options[CONF_SCANNER_MAX_RADIUS] == {SCN_A: 4.0, SCN_B: 15.0}
+
+
+async def test_reset_ticks_nothing_by_default(hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry):
+    """Opening Reset just to look and pressing Submit must not remove anything."""
+    await _with_options(hass, setup_bermuda_entry)
+    before = dict(setup_bermuda_entry.options)
+    result = await _open_reset(hass, setup_bermuda_entry)
+    assert result["step_id"] == "autotune_reset"
+    defaults = {str(key): key.default() for key in result["data_schema"].schema}
+    assert defaults == {"reset_scanner_max_radius": False, "reset_landmarks": False, "reset_rssi_offsets": False}
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], user_input={})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    options = setup_bermuda_entry.options
+    assert options[CONF_SCANNER_MAX_RADIUS] == before[CONF_SCANNER_MAX_RADIUS]
+    assert options[autotune_ha.CONF_AUTOTUNE_LANDMARKS] == before[autotune_ha.CONF_AUTOTUNE_LANDMARKS]
+    assert options[CONF_RSSI_OFFSETS] == before[CONF_RSSI_OFFSETS]

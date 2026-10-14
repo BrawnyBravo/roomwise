@@ -245,7 +245,7 @@ class AutotuneOptionsMixin:
             step_id="autotune_reset",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_RESET_RADIUS, default=bool(radii)): bool,
+                    vol.Optional(CONF_RESET_RADIUS, default=False): bool,
                     vol.Optional(CONF_RESET_LANDMARKS, default=False): bool,
                     vol.Optional(CONF_RESET_OFFSETS, default=False): bool,
                 }

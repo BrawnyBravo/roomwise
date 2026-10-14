@@ -218,7 +218,8 @@ Nothing is saved if you close the dialog or untick Apply.
 
 Open **Configure, Reset auto-tune settings**. It lists the saved per-proxy range limits, the current
 offsets and the number of remembered devices, and lets you remove the range limits, forget the
-devices, and/or set every offset back to 0 (that also clears offsets you set by hand). You can also
+devices, and/or set every offset back to 0 (that also clears offsets you set by hand). Nothing is
+ticked to start with, so opening it just to look and pressing Submit changes nothing. You can also
 edit offsets directly in Calibration 2.
 
 ### The optional export file
