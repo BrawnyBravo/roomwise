@@ -238,13 +238,13 @@ def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> 
     our_entry = coordinator.config_entry.entry_id if coordinator.config_entry else None
     seen_addresses: set[str] = set()
 
-    for device in devreg.devices.values():
+    for device in devreg.devices:  # iterating gives the entries; mapping use is deprecated (HA 2027.9)
         name = device.name_by_user or device.name or device.id
         bt_addresses = [c[1].lower() for c in device.connections if c[0] == dr.CONNECTION_BLUETOOTH]
         mac_addresses = [c[1].lower() for c in device.connections if c[0] == dr.CONNECTION_NETWORK_MAC]
         if not bt_addresses and not mac_addresses:
             continue
-        if our_entry is not None and our_entry in device.config_entries:
+        if our_entry is not None and device.config_entry_id == our_entry:
             continue  # Roomwise's own devices are things it tracks
         if any(ident[0] == DOMAIN_PRIVATE_BLE_DEVICE for ident in device.identifiers):
             found.skipped.append((name, "private Bluetooth device (rotating address)"))

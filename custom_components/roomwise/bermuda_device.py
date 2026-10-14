@@ -374,9 +374,11 @@ class BermudaDevice(dict):
                 connlist.add(("mac", altmac))
                 maclist.add(altmac)
 
-        # Requires 2025.3
-        devreg_devices = self._coordinator.dr.devices.get_entries(None, connections=connlist)
-        devreg_count = 0  # can't len() an iterable.
+        # Every registry device with one of these connections, whichever integration owns it.
+        # (Not `dr.devices.get_entries(...)`: using `devices` as a mapping is deprecated and stops
+        # working in Home Assistant 2027.9.)
+        devreg_devices = self._coordinator.dr.async_get_devices(connections=connlist)
+        devreg_count = 0
         devreg_stringlist = ""  # for debug logging
         for devreg_device in devreg_devices:
             devreg_count += 1

@@ -251,3 +251,11 @@ async def test_scanner_takes_the_name_and_room_the_user_gave_it(hass, router_dev
     assert scanner.area_id == hall.id
     assert scanner.address_wifi_mac == PROXY_WIFI
     assert receiver_name(scanner, PROXY_BLE) == "Hall proxy"
+
+
+async def test_scanner_lookup_uses_no_deprecated_registry_calls(hass, ha_deprecation_reports):
+    """`device_registry.devices.get_entries(...)` is deprecated and stops working in HA 2027.9."""
+    scanner, ha_scanner, _hall = await _proxy_in_registry(hass, router_device=True)
+    scanner.async_as_scanner_init(ha_scanner)
+    assert scanner.name == "Hall proxy"
+    assert ha_deprecation_reports() == []

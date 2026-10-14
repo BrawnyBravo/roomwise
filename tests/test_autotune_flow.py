@@ -313,6 +313,13 @@ async def test_discover_shows_receivers_by_name_not_address(hass: HomeAssistant,
     }
 
 
+async def test_discover_uses_no_deprecated_registry_calls(hass: HomeAssistant, house, ha_deprecation_reports):
+    """No `devices.values()` (stops working in HA 2027.9) and no `config_entries` (HA 2027.10)."""
+    found = autotune_ha.discover(hass, house.coordinator)
+    assert {lm.name for lm in found.landmarks} == {"Kettle", "Desk lamp"}
+    assert ha_deprecation_reports() == []
+
+
 async def test_collector_records_each_new_advert_once(hass: HomeAssistant, house):
     coord = house.coordinator
     kettle = coord.devices["11:11:11:11:11:01"]
