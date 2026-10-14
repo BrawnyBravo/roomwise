@@ -56,3 +56,64 @@ def test_minimum_home_assistant_is_the_tested_one_everywhere():
     assert _version_tuple(MIN_HA) <= _version_tuple(version("homeassistant"))
     pinned = _pins(ROOT / "requirements_test.txt")["homeassistant"]
     assert _version_tuple(MIN_HA)[:2] == _version_tuple(pinned)[:2]  # the release line CI tests
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _installed_closure(roots: set[str]) -> set[str]:
+    """Every distribution pip would install for these roots (no extras)."""
+    from importlib.metadata import PackageNotFoundError, requires  # noqa: PLC0415
+
+    from packaging.requirements import Requirement  # noqa: PLC0415
+
+    seen: set[str] = set()
+    todo = [_norm(r) for r in roots]
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        try:
+            reqs = requires(name) or []
+        except PackageNotFoundError:
+            continue
+        for text in reqs:
+            req = Requirement(text)
+            if req.marker is None or req.marker.evaluate({"extra": ""}):
+                todo.append(_norm(req.name))
+    return seen
+
+
+def test_test_requirements_cover_the_ha_components_roomwise_loads():
+    """
+    A clean CI install (requirements_test.txt only) must import everything.
+
+    Home Assistant installs a component's own requirements at runtime, not as
+    package dependencies, so the test environment has to list them (HA 2026.9's
+    usb component, pulled in by bluetooth, needs serialx).
+    """
+    import homeassistant  # noqa: PLC0415
+
+    components = Path(homeassistant.__file__).parent / "components"
+    manifest = json.loads((ROOT / "custom_components" / "roomwise" / "manifest.json").read_text(encoding="utf-8"))
+    todo = list(manifest.get("dependencies", [])) + list(manifest.get("after_dependencies", []))
+    seen: set[str] = set()
+    needed: dict[str, str] = {}
+    while todo:
+        domain = todo.pop()
+        if domain in seen:
+            continue
+        seen.add(domain)
+        comp = json.loads((components / domain / "manifest.json").read_text(encoding="utf-8"))
+        for req in comp.get("requirements", []):
+            needed[_norm(re.split(r"[=<>!~\[ ]", req, maxsplit=1)[0])] = domain
+        todo += comp.get("dependencies", [])
+    roots = {"homeassistant", "pytest-homeassistant-custom-component"}
+    for name in ("requirements.txt", "requirements_test.txt"):
+        for line in (ROOT / name).read_text(encoding="utf-8").splitlines():
+            if m := re.match(r"^([A-Za-z0-9_.-]+)", line.strip()):
+                roots.add(m.group(1))
+    missing = {req: domain for req, domain in needed.items() if req not in _installed_closure(roots)}
+    assert not missing, f"add to requirements_test.txt: {missing}"
