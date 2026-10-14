@@ -149,7 +149,7 @@ class AutotuneOptionsMixin:
             )
         try:
             self._autotune_report = self._autotune_task.result()
-        except Exception:  # noqa: BLE001 - shown to the user as a plain failure
+        except Exception:
             _LOGGER.exception("Auto-tune failed")
             return self.async_show_progress_done(next_step_id="autotune_failed")
         return self.async_show_progress_done(next_step_id="autotune_result")
@@ -160,7 +160,8 @@ class AutotuneOptionsMixin:
     async def async_step_autotune_result(self, user_input: dict[str, Any] | None = None):
         """Show the result; Apply writes offsets like manual calibration does."""
         report = self._autotune_report
-        assert report is not None
+        if report is None:
+            return self.async_abort(reason="autotune_failed")
         if user_input is not None:
             if report.recommend and user_input.get(CONF_AUTOTUNE_APPLY):
                 self.options.update(settings_to_options(report, self.options))

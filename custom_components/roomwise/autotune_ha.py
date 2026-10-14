@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from functools import partial
 from dataclasses import dataclass, field
+from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant.core import callback
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -27,8 +29,8 @@ from .const import (
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
     BDADDR_TYPE_NOT_MAC48,
     BDADDR_TYPE_OTHER,
-    BDADDR_TYPE_RANDOM_STATIC,
     BDADDR_TYPE_RANDOM_RESOLVABLE,
+    BDADDR_TYPE_RANDOM_STATIC,
     BDADDR_TYPE_RANDOM_UNRESOLVABLE,
     CONF_ATTENUATION,
     CONF_DEVICES,
@@ -110,9 +112,7 @@ class Discovery:
 
 
 def _looks_mobile(device: dr.DeviceEntry) -> bool:
-    text = " ".join(
-        str(x).lower() for x in (device.name_by_user, device.name, device.model, device.manufacturer) if x
-    )
+    text = " ".join(str(x).lower() for x in (device.name_by_user, device.name, device.model, device.manufacturer) if x)
     return any(word in text for word in MOVING_DEVICE_WORDS)
 
 
@@ -128,8 +128,6 @@ def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> 
     devreg = dr.async_get(hass)
     entreg = er.async_get(hass)
     found = Discovery()
-
-    from homeassistant.helpers import area_registry as ar  # local: keeps import cost off module load
 
     areareg = ar.async_get(hass)
 
@@ -235,7 +233,7 @@ def settings_to_options(report: TuneReport, options: dict) -> dict:
     """The option values to save, in the same shape manual calibration saves them."""
     new = dict(options.get(CONF_RSSI_OFFSETS, {}) or {})
     for sid, value in report.proposed.offsets.items():
-        new[sid] = max(min(int(round(value)), 127), -127)  # same clip as calibration2 (#497)
+        new[sid] = max(min(round(value), 127), -127)  # same clip as calibration2 (#497)
     out = {CONF_RSSI_OFFSETS: new}
     if report.proposed.radii or options.get(CONF_SCANNER_MAX_RADIUS):
         out[CONF_SCANNER_MAX_RADIUS] = dict(report.proposed.radii)
@@ -368,5 +366,5 @@ async def async_run_autotune(
 
 
 def _write_json(path: str, data: dict) -> None:
-    with open(path, "w", encoding="utf-8") as fh:
+    with Path(path).open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=1)

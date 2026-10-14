@@ -36,9 +36,9 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from statistics import median
-from typing import Callable, Iterable
 
 # The coordinator's hysteresis lets a challenger win outright only when its
 # distance differs from the incumbent's by more than this percentage
@@ -607,9 +607,7 @@ def evaluate(
     return report
 
 
-def explain(
-    report: TuneReport, scanners: dict[str, Scanner], settings: Settings, names: dict[str, str]
-) -> list[str]:
+def explain(report: TuneReport, scanners: dict[str, Scanner], settings: Settings, names: dict[str, str]) -> list[str]:
     """
     Plain-language notes on what tuning cannot fix.
 
@@ -733,7 +731,8 @@ def export_dict(
 def load_export(data: dict) -> tuple[list[Landmark], list[Scanner], Settings, list[Sample]]:
     """Inverse of export_dict: (landmarks, scanners, settings, samples)."""
     if data.get("format") != EXPORT_FORMAT:
-        raise ValueError(f"Not a Roomwise auto-tune export: {data.get('format')!r}")
+        msg = f"Not a Roomwise auto-tune export: {data.get('format')!r}"
+        raise ValueError(msg)
     st = data["settings"]
     settings = Settings(
         float(st["ref_power"]),

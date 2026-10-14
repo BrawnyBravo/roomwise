@@ -352,8 +352,15 @@ async def test_candidates_list_fixed_steady_addresses(hass: HomeAssistant, house
     assert by_addr["44:44:44:44:44:44"].suggested
     assert by_addr["44:44:44:44:44:44"].area_id == house.office.id
     # never offered: scanners, rotating/beacon addresses, tracked devices, too few readings, stale
-    for addr in (SCN_A, SCN_B, "11:11:11:11:11:04", "11:11:11:11:11:05", "11:11:11:11:11:07", "11:11:11:11:11:03",
-                 "11:11:11:11:11:06"):
+    for addr in (
+        SCN_A,
+        SCN_B,
+        "11:11:11:11:11:04",
+        "11:11:11:11:11:05",
+        "11:11:11:11:11:07",
+        "11:11:11:11:11:03",
+        "11:11:11:11:11:06",
+    ):
         assert addr not in by_addr, addr
     # ticked ones come first
     assert [c.suggested for c in cands] == sorted([c.suggested for c in cands], reverse=True)
