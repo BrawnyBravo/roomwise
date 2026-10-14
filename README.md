@@ -196,7 +196,10 @@ room than with your current settings (or as many, with fewer devices in proxy-le
 3. Tick devices that **never move**: smart plugs, light bulbs, TVs, speakers, appliances. Devices
    Home Assistant already knows the room of are pre-ticked. Do not tick phones, watches, tags, or
    anything carried around. A few devices in each room with a proxy is ideal; up to 60 devices, and
-   devices x minutes up to 1200.
+   devices x minutes up to 1200. Some fixed devices (those whose Bluetooth address looks like one that
+   could change) only appear in the list after Roomwise has heard them steadily for about 20 minutes,
+   for example right after a restart of Home Assistant. If one is missing, wait and open Auto-tune
+   again.
 4. Confirm each device's room, then **keep the dialog open** while it listens (10 minutes is a good
    start). Closing the dialog cancels the run and changes nothing.
 5. Read the result: a per-room table (right now vs right after tuning), the proposed offsets and range
