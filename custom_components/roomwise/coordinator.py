@@ -1363,6 +1363,20 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         _scanner_radius = self.options.get(CONF_SCANNER_MAX_RADIUS) or {}  # set by auto-tune
         nowstamp = monotonic_time_coarse()
 
+        def _beyond_range(advert: BermudaAdvert) -> bool:
+            return advert.rssi_distance is not None and advert.rssi_distance > _scanner_radius.get(
+                advert.scanner_address, _max_radius
+            )
+
+        # The current room's receiver must still be in range. Without this, a
+        # device that once came within range of a receiver (a noise dip near a
+        # trimmed receiver's cut-off) would stay assigned to it for as long as no
+        # other receiver hears it, ignoring both the global and the per-receiver
+        # max radius. An out-of-range incumbent is treated as invalid, exactly
+        # like a challenger that is too far away.
+        if incumbent is not None and _beyond_range(incumbent):
+            incumbent = None
+
         tests = self.AreaTests()
         tests.device = device.name
 
@@ -1400,11 +1414,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 continue
 
             # If we are too far away or don't have an area, we cannot win...
-            if (
-                challenger.rssi_distance is None
-                or challenger.rssi_distance > _scanner_radius.get(challenger.scanner_address, _max_radius)
-                or challenger.area_id is None
-            ):
+            if challenger.rssi_distance is None or _beyond_range(challenger) or challenger.area_id is None:
                 continue
 
             # At this point the challenger is a vaild contender...
