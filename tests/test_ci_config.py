@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from importlib.metadata import metadata, version
 from pathlib import Path
@@ -36,3 +37,22 @@ def test_ci_python_satisfies_home_assistant():
     ci = (int(m.group(1)), int(m.group(2)))
     needs = re.match(r">=\s*(\d+)\.(\d+)", metadata("homeassistant")["Requires-Python"])
     assert ci >= (int(needs.group(1)), int(needs.group(2)))
+
+
+MIN_HA = "2026.9.0"  # oldest Home Assistant this is tested on (the suite's pinned pair is 2026.9.x)
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", text)[:3])
+
+
+def test_minimum_home_assistant_is_the_tested_one_everywhere():
+    """HACS refuses older installs, pip agrees, and the README says the same (BaseScannerEntity needs 2026.6+)."""
+    hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
+    assert hacs["homeassistant"] == MIN_HA
+    reqs = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert re.search(r"^homeassistant>=" + re.escape(MIN_HA) + r"\s*$", reqs, re.MULTILINE)
+    assert f"Home Assistant {MIN_HA} or newer" in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert _version_tuple(MIN_HA) <= _version_tuple(version("homeassistant"))
+    pinned = _pins(ROOT / "requirements_test.txt")["homeassistant"]
+    assert _version_tuple(MIN_HA)[:2] == _version_tuple(pinned)[:2]  # the release line CI tests
