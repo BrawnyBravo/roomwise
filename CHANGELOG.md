@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1
+## 0.1.1 (2026-10-14)
 
 ### Fixed
 
@@ -13,7 +13,7 @@
 - No more Home Assistant deprecation warning about `device_registry.devices` (it would stop working in Home
   Assistant 2027.9), and no use of a device's `config_entries` (deprecated in 2026.10, removed in 2027.10).
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-14)
 
 First release of Roomwise, built on [Bermuda BLE Trilateration](https://github.com/agittins/bermuda) by
 Ashley Gittins ([agittins](https://github.com/agittins)), MIT licence, from Bermuda's main branch after v0.8.7.
