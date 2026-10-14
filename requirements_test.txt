@@ -6,5 +6,5 @@ pytest-homeassistant-custom-component==0.13.366
 homeassistant==2026.9.3
 # Requirements of Home Assistant components Roomwise loads that Home Assistant
 # installs at runtime rather than as package dependencies (HA 2026.9.3 usb manifest).
-serialx==1.10.0
+serialx==1.11.0
 pre-commit
