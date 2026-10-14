@@ -55,7 +55,7 @@ from .const import (
     DOMAIN_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_PRIVATE_BLE_SOURCE,
 )
-from .util import mac_math_offset
+from .util import mac_math_offset, name_is_address
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -186,6 +186,27 @@ def _name_looks_mobile(name: str | None) -> bool:
     return any(word in text for word in MOVING_DEVICE_WORDS)
 
 
+def receiver_name(scanner: object | None, address: str) -> str:
+    """
+    How to show a receiver (scanner) to a person.
+
+    Its Home Assistant device name (as the user named it, then as its
+    integration named it), then the Bluetooth scanner's own name, and only
+    then its address.
+    """
+    if scanner is not None:
+        ha_scanner = getattr(scanner, "_hascanner", None)
+        for name in (
+            getattr(scanner, "name_by_user", None),
+            getattr(scanner, "name_devreg", None),
+            getattr(ha_scanner, "name", None),
+            getattr(scanner, "name", None),
+        ):
+            if isinstance(name, str) and not name_is_address(name):
+                return name.strip()
+    return address.upper()
+
+
 def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> Discovery:  # noqa: C901
     """Find landmarks and scanners. Must run in the event loop."""
     devreg = dr.async_get(hass)
@@ -204,7 +225,7 @@ def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> 
     for address in sorted(coordinator.scanner_list):
         scanner = coordinator.devices.get(address)
         area = scanner.area_id if scanner is not None else None
-        found.scanners.append(Scanner(address, area, scanner.name if scanner is not None else address))
+        found.scanners.append(Scanner(address, area, receiver_name(scanner, address)))
         scanner_addresses.add(address.lower())
         if scanner is not None:
             for alt in (scanner.address_ble_mac, scanner.address_wifi_mac):

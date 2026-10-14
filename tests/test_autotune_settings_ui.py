@@ -135,3 +135,18 @@ async def test_reset_ticks_nothing_by_default(hass: HomeAssistant, setup_bermuda
     assert options[CONF_SCANNER_MAX_RADIUS] == before[CONF_SCANNER_MAX_RADIUS]
     assert options[autotune_ha.CONF_AUTOTUNE_LANDMARKS] == before[autotune_ha.CONF_AUTOTUNE_LANDMARKS]
     assert options[CONF_RSSI_OFFSETS] == before[CONF_RSSI_OFFSETS]
+
+
+async def test_reset_shows_receivers_by_name(hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry):
+    """Receivers are listed by the name the user gave them, not by an address-like registry name."""
+    await _with_options(hass, setup_bermuda_entry)
+    coordinator = setup_bermuda_entry.runtime_data.coordinator
+    hall = coordinator._get_or_create_device(SCN_A)  # noqa: SLF001
+    hall.name_by_user, hall.name_devreg, hall.name = "Hall proxy", SCN_A, SCN_A
+    other = coordinator._get_or_create_device(SCN_B)  # noqa: SLF001
+    other.name_devreg = other.name = "aa:aa:aa:aa:aa:00"
+    result = await _open_reset(hass, setup_bermuda_entry)
+    placeholders = result["description_placeholders"]
+    assert "- Hall proxy: 4 m" in placeholders["radius_lines"]
+    assert "- Hall proxy: +3 dB" in placeholders["offset_lines"]
+    assert f"- {SCN_B.upper()}: -5 dB" in placeholders["offset_lines"]  # nothing better known: the address

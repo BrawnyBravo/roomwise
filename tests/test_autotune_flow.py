@@ -285,6 +285,34 @@ async def test_discover_picks_stationary_devices_with_rooms(hass: HomeAssistant,
     assert found.area_names[house.kitchen.id] == "Kitchen"
 
 
+def test_receiver_name_prefers_the_names_a_person_gave():
+    """User's name, then the integration's name, then the Bluetooth scanner's name, then the address."""
+    ha_scanner = SimpleNamespace(name="esp32-proxy-000110 (AA:AA:AA:AA:AA:01)")
+    proxy = SimpleNamespace(
+        name_by_user=None, name_devreg="aa:aa:aa:aa:aa:00", _hascanner=ha_scanner, name="aa:aa:aa:aa:aa:00"
+    )
+    assert autotune_ha.receiver_name(proxy, SCN_A) == "esp32-proxy-000110 (AA:AA:AA:AA:AA:01)"
+    proxy.name_devreg = "Proxy 000110"
+    assert autotune_ha.receiver_name(proxy, SCN_A) == "Proxy 000110"
+    proxy.name_by_user = "Hall proxy"
+    assert autotune_ha.receiver_name(proxy, SCN_A) == "Hall proxy"
+    nameless = SimpleNamespace(name_by_user=None, name_devreg=None, _hascanner=None, name="roomwise_aa_aa_aa_aa_aa_01")
+    assert autotune_ha.receiver_name(nameless, SCN_A) == SCN_A.upper()
+    assert autotune_ha.receiver_name(None, SCN_A) == SCN_A.upper()
+
+
+async def test_discover_shows_receivers_by_name_not_address(hass: HomeAssistant, house):
+    """A proxy whose registry name is its address is shown by the Bluetooth scanner's name instead."""
+    proxy = house.coordinator.devices[SCN_B]
+    proxy.name = proxy.name_devreg = "aa:aa:aa:aa:aa:00"
+    proxy._hascanner = SimpleNamespace(name="esp32-proxy-office (AA:AA:AA:AA:AA:02)")
+    found = autotune_ha.discover(hass, house.coordinator)
+    assert {s.id: s.name for s in found.scanners} == {
+        SCN_A: "Kitchen proxy",
+        SCN_B: "esp32-proxy-office (AA:AA:AA:AA:AA:02)",
+    }
+
+
 async def test_collector_records_each_new_advert_once(hass: HomeAssistant, house):
     coord = house.coordinator
     kettle = coord.devices["11:11:11:11:11:01"]
