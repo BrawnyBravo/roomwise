@@ -48,6 +48,7 @@ from .const import (
     DOMAIN_PRIVATE_BLE_DEVICE,
     NAME,
 )
+from .autotune_flow import AutotuneOptionsMixin
 from .util import mac_redact, rssi_to_metres
 
 if TYPE_CHECKING:
@@ -121,7 +122,7 @@ class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     #     )
 
 
-class BermudaOptionsFlowHandler(OptionsFlowWithConfigEntry):
+class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry):
     """Config flow options handler for bermuda."""
 
     def __init__(self, config_entry: BermudaConfigEntry) -> None:
@@ -190,6 +191,7 @@ class BermudaOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 "selectdevices": "Select Devices",
                 "calibration1_global": "Calibration 1: Global",
                 "calibration2_scanners": "Calibration 2: Scanner RSSI Offsets",
+                "autotune": "Auto-tune rooms",
             },
             description_placeholders=messages,
         )
