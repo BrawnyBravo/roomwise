@@ -419,3 +419,19 @@ def test_radius_tuning_can_be_switched_off():
     )
     assert report.proposed.radii == {}
     assert not report.recommend
+
+
+def test_receiver_with_no_own_room_evidence_is_never_trimmed():
+    """If no device in the receiver's own room is heard by it, nothing protects that room: leave its range alone."""
+    scanners, medians, landmarks = _under_study_house(-74)
+    for lm_id in ("basement_1", "basement_2", "basement_3"):
+        medians[lm_id] = {k: v for k, v in medians[lm_id].items() if k != "b"}
+    report = at.evaluate(landmarks, scanners, None, at.Settings(-55.0, 3.0, 20.0, {}), medians=medians)
+    assert report.proposed.radius("b") == 20.0
+    assert any("was never heard by the receiver in its own room" in n for n in report.notes)
+
+
+def test_trimmed_radius_never_below_floor():
+    scanners, medians, landmarks = _under_study_house(-74)
+    fitted = at.fit(medians, landmarks, scanners, at.Settings(-55.0, 3.0, 20.0, {}))
+    assert all(r >= min(at.RADIUS_STEPS) for r in fitted.radii.values())

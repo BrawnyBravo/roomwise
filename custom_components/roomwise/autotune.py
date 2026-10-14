@@ -51,7 +51,7 @@ DEFAULT_REF_POWER_STEP_LIMIT = 10  # dB either side of current ref_power, when t
 DEFAULT_RADIUS_MARGIN_DB = 2.0  # how far inside the max radius an own-room reading should be
 DEFAULT_REGULARISATION = 0.01  # cost per dB^2 of moving an offset away from its current value
 DEFAULT_MIN_LANDMARKS = 3  # fewer scored landmarks than this and we refuse to recommend
-RADIUS_STEPS = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0)  # metres, per-scanner choices
+RADIUS_STEPS = (2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0)  # metres, per-scanner choices
 RADIUS_CHANGE_COST = 0.01  # small preference for leaving a scanner's radius alone (or trimming gently)
 WRONG_ROOM_WEIGHT = 10.0  # a wrong room costs far more than any margin shortfall
 OUTSIDER_WEIGHT = 1.0  # a device in a room with no scanner placed in some other room
@@ -453,9 +453,19 @@ def fit(
     if options.tune_radius and outsiders:
         stage1 = best
         best_cost = _total_cost(training, outsiders, scanner_map, best, stage1, options, margin)
+        # Only trim a receiver that hears at least one device in its own room: that
+        # device is what stops the trim from cutting the receiver's own room off.
+        trimmable = sorted(
+            {
+                sid
+                for heard, area in training.values()
+                for sid in heard
+                if sid in scanner_map and scanner_map[sid].area == area
+            }
+        )
         for _ in range(options.max_passes):
             improved = False
-            for scanner_id in sorted(scanner_map):
+            for scanner_id in trimmable:
                 for radius in radius_choices:
                     if radius == best.radius(scanner_id):
                         continue
@@ -651,7 +661,7 @@ def explain(
             if not own:
                 notes.append(
                     f"{res.landmark.name or res.landmark.id} in {nm(res.landmark.area)} was never heard by the "
-                    "receiver in its own room."
+                    "receiver in its own room in this data."
                 )
     return notes
 
