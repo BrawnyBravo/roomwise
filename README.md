@@ -25,7 +25,24 @@ presence engine is Bermuda's work, and the original copyright notice is kept in 
 If Roomwise is useful to you, please consider
 [supporting the original author](https://github.com/sponsors/agittins).
 
-Fixes taken from upstream Bermuda pull requests are credited to their authors in the release notes.
+### Fixes from upstream pull requests
+
+Roomwise 0.1.0 includes these fixes from open pull requests on Bermuda. Thank you to their authors:
+
+- [#833](https://github.com/agittins/bermuda/pull/833) by [@davidcoulson](https://github.com/davidcoulson):
+  no crash when a rotated private address is pruned twice.
+- [#848](https://github.com/agittins/bermuda/pull/848) by [@barneyonline](https://github.com/barneyonline):
+  no crash (and no off-by-one) when the device-count prune quota kicks in.
+- [#863](https://github.com/agittins/bermuda/pull/863) by [@davidcoulson](https://github.com/davidcoulson):
+  Bluetooth address types classified by equality, not bit masks.
+- [#865](https://github.com/agittins/bermuda/pull/865) by [@davidcoulson](https://github.com/davidcoulson):
+  distance sensors update straight after a reference-power change.
+- [#867](https://github.com/agittins/bermuda/pull/867) by [@davidcoulson](https://github.com/davidcoulson):
+  stale iBeacon devices that nobody tracks are pruned.
+- [#836](https://github.com/agittins/bermuda/pull/836) by [@BrawnyBravo](https://github.com/BrawnyBravo)
+  (Roomwise's maintainer): proxies listed in a stable, sorted order in calibration and status screens.
+
+The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
 Bermuda itself was generated from [@oncleben31](https://github.com/oncleben31)'s
 [Home Assistant Custom Component Cookiecutter](https://github.com/oncleben31/cookiecutter-homeassistant-custom-component)
