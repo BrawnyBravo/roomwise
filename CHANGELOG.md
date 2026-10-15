@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Roomwise now has its own icon, shown in HACS and on the Home Assistant integrations page.
+
 ## 0.1.1 (2026-10-14)
 
 ### Fixed
