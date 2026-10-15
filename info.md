@@ -8,7 +8,7 @@ Bluetooth room presence for Home Assistant that tunes itself.
 Roomwise tells Home Assistant which room (Area) each of your Bluetooth devices is in, using your
 ESPHome Bluetooth proxies, Shelly Gen2+ devices or local Bluetooth adapters.
 
-**Auto-tune rooms** (new in 0.1, experimental): Roomwise listens to devices that never move and
+**Auto-tune rooms** (new in 0.1): Roomwise listens to devices that never move and
 whose room you know, then proposes per-proxy signal offsets (and, where it helps, a smaller range
 for a proxy that over-hears a room without one). Nothing changes until you press Apply, and
 "Reset auto-tune settings" in the options menu undoes it. The optional raw-readings export file

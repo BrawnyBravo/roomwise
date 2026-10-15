@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 (2026-10-15)
+
+### Added
+
+- Roomwise now has its own icon, shown in HACS and on the Home Assistant integrations page.
+
+### Changed
+
+- Auto-tune is no longer labelled experimental in the docs.
+
 ## 0.1.1 (2026-10-14)
 
 ### Fixed

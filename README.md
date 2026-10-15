@@ -6,7 +6,7 @@ Roomwise tells Home Assistant which room (Area) each of your Bluetooth devices i
 [ESPHome Bluetooth Proxies](https://esphome.io/components/bluetooth_proxy.html), Shelly Gen2+ devices
 or local Bluetooth adapters you already have.
 
-Its lead feature is **Auto-tune rooms** (new in 0.1, experimental): instead of hand-adjusting
+Its lead feature is **Auto-tune rooms** (new in 0.1): instead of hand-adjusting
 signal offsets for every proxy, Roomwise learns them from devices whose room you already know (a
 smart plug, a TV, a speaker) and only offers the new settings when they put more of those devices
 in the right room than before. Nothing changes unless you press Apply, and it can be undone. See
@@ -162,8 +162,8 @@ In Settings, People, you can use a Roomwise device tracker for any person's home
 
 ## Auto-tune rooms
 
-Auto-tune is new in 0.1 and still experimental: it has been tested on made-up houses, not yet on
-many real ones. It only ever proposes changes; you decide whether to apply them.
+Auto-tune is new in 0.1. So far it has been tested on made-up houses and one real home. It only
+ever proposes changes; you decide whether to apply them, and they can be undone.
 
 ### What it does
 
