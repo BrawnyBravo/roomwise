@@ -429,7 +429,7 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             if scanner is None:
                 return self.async_show_form(
                     step_id="calibration1_global",
-                    errors={"err_scanner_no_record": "The selected scanner hasn't (yet) seen this device."},
+                    errors={"base": "scanner_no_record"},
                     data_schema=vol.Schema(data_schema),
                     description_placeholders=_ugly_token_hack
                     | {"suffix": "After you click Submit, the new distances will be shown here."},

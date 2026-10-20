@@ -269,3 +269,28 @@ async def test_calibration_with_a_device_not_in_memory(hass: HomeAssistant):
         user_input={CONF_DEVICES: None, CONF_SCANNER_INFO: {}, CONF_SAVE_AND_CLOSE: False}
     )
     assert result["type"] == FlowResultType.FORM
+
+
+async def test_calibration1_scanner_that_never_heard_the_device_shows_a_translated_error(hass: HomeAssistant):
+    import json
+    from pathlib import Path
+
+    from custom_components.roomwise.const import CONF_ATTENUATION, CONF_REF_POWER, CONF_SCANNERS
+
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    device = SimpleNamespace(get_scanner=lambda address: None)
+    with patch.object(BermudaOptionsFlowHandler, "_get_bermuda_device_from_registry", return_value=device):
+        result = await flow.async_step_calibration1_global(
+            user_input={
+                CONF_DEVICES: "some_device_registry_id",
+                CONF_SCANNERS: "aa:bb:cc:dd:ee:01",
+                CONF_REF_POWER: -55.0,
+                CONF_ATTENUATION: 3.0,
+                CONF_SAVE_AND_CLOSE: False,
+            }
+        )
+    assert result["errors"] == {"base": "scanner_no_record"}
+    en = json.loads(
+        (Path(__file__).parent.parent / "custom_components" / DOMAIN / "translations" / "en.json").read_text("utf-8")
+    )
+    assert "scanner_no_record" in en["options"]["error"]

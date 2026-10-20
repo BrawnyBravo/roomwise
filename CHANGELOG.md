@@ -38,6 +38,7 @@
 - "Area Last Seen" no longer shows the word "None" as a room after a restart when it had no room saved.
 - The calibration steps no longer fail with "Unknown error" when the chosen device has not been heard since the
   restart.
+- Calibration 1 now shows a readable message when the chosen proxy has not heard the chosen device.
 
 ### Privacy
 
