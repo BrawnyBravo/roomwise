@@ -48,6 +48,8 @@
 - A phone or watch added as a Private BLE device is matched to the address it is using right now, even when that
   address has been in use for a long time.
 - Changing a device's reference power no longer makes its room flicker to a receiver the room rules would not pick.
+- Auto-tune notes about devices in rooms without a receiver now name the receiver that actually holds them, never
+  one without a room.
 
 ### Privacy
 

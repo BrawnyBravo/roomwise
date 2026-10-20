@@ -506,3 +506,35 @@ def test_trimmed_radius_never_below_floor():
     scanners, medians, landmarks = _under_study_house(-74)
     fitted = at.fit(medians, landmarks, scanners, at.Settings(-55.0, 3.0, 20.0, {}))
     assert all(r >= min(at.RADIUS_STEPS) for r in fitted.radii.values())
+
+
+def test_notes_never_blame_a_receiver_without_a_room():
+    """A misplaced device is explained by the receiver that holds it, not a louder one with no room."""
+    scanners = {
+        "attic": at.Scanner("attic", None, "Attic proxy"),  # no room, hears it loudest
+        "kitchen": at.Scanner("kitchen", "Kitchen", "Kitchen proxy"),
+    }
+    settings = at.Settings(ref_power=-55, attenuation=3, max_radius=20)
+    result = at.LandmarkResult(
+        landmark=at.Landmark("dev1", "Pantry", "Test Tag"),
+        scored=True,
+        reason="",
+        after_ok=False,
+        heard_by={"attic": -50.0, "kitchen": -65.0},
+        outsider=True,
+    )
+    report = at.TuneReport(
+        current=settings,
+        proposed=settings,
+        results=[result],
+        scored=1,
+        right_before=0,
+        right_after=0,
+        recommend=False,
+        summary="",
+    )
+    notes = at.explain(report, scanners, settings, {"Kitchen": "Kitchen", "Pantry": "Pantry"})
+    text = " ".join(notes)
+    assert "Kitchen proxy" in text
+    assert "Attic proxy" not in text
+    assert "(no room)" not in text

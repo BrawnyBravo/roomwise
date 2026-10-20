@@ -267,6 +267,12 @@ def holding_area(heard: dict[str, float], scanners: dict[str, Scanner], settings
     within that wider distance. Returns the area of the nearest such scanner
     (a tie goes to the lowest scanner id), or None when it is reliably unplaced.
     """
+    holder = holding_scanner(heard, scanners, settings)
+    return None if holder is None else scanners[holder].area
+
+
+def holding_scanner(heard: dict[str, float], scanners: dict[str, Scanner], settings: Settings) -> str | None:
+    """The scanner behind holding_area: the nearest one with an area within its exit distance."""
     found: tuple[float, str] | None = None
     for scanner_id, rssi in heard.items():
         scanner = scanners.get(scanner_id)
@@ -277,7 +283,7 @@ def holding_area(heard: dict[str, float], scanners: dict[str, Scanner], settings
             continue
         if found is None or (dist, scanner_id) < found:
             found = (dist, scanner_id)
-    return None if found is None else scanners[found[1]].area
+    return None if found is None else found[1]
 
 
 # --------------------------------------------------------------------------
@@ -730,7 +736,12 @@ def explain(report: TuneReport, scanners: dict[str, Scanner], settings: Settings
             continue
         loudest: dict[str, float] = {}
         for r in misplaced:
-            sid = max(r.heard_by, key=lambda s: r.heard_by[s] + settings.offset(s))
+            # The receiver that actually holds the device: the same rule as
+            # holding_area (has a room, within its exit distance), not simply the
+            # loudest receiver, which may have no room at all.
+            sid = holding_scanner(r.heard_by, scanners, settings)
+            if sid is None:
+                continue
             loudest[sid] = max(loudest.get(sid, -math.inf), r.heard_by[sid])
         for sid, rssi in sorted(loudest.items()):
             receiver = scanners[sid].name or sid
