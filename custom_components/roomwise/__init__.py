@@ -40,11 +40,14 @@ class BermudaData:
 
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+_STARTUP_LOGGED = f"{DOMAIN}_startup_logged"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> bool:
     """Set up this integration using UI."""
-    if hass.data.get(DOMAIN) is None:
+    # The banner once per Home Assistant run, not on every reload of the entry.
+    if not hass.data.get(_STARTUP_LOGGED):
+        hass.data[_STARTUP_LOGGED] = True
         _LOGGER.info(STARTUP_MESSAGE)
     coordinator = BermudaDataUpdateCoordinator(hass, entry)
     entry.runtime_data = BermudaData(coordinator)

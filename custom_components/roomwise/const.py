@@ -21,7 +21,6 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 # either way it works).
 VERSION = "0.0.0"
 
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 DOCS_URL = "https://github.com/BrawnyBravo/roomwise"  # shown in the setup form via the {url} placeholder
 ISSUE_URL = f"{DOCS_URL}/issues"
 
