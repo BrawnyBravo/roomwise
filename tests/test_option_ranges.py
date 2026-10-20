@@ -83,6 +83,7 @@ async def test_calibration_step_1_rejects_zero_attenuation(hass: HomeAssistant):
     config_entry.runtime_data = SimpleNamespace(coordinator=coordinator)
     flow = BermudaOptionsFlowHandler(config_entry)
     flow.hass = hass
+    flow.handler = config_entry.entry_id
     flow.coordinator = coordinator
     result = await flow.async_step_calibration1_global()
     schema = result["data_schema"]

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant import config_entries
-from homeassistant.config_entries import OptionsFlowWithConfigEntry
+from homeassistant.config_entries import OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.selector import (
@@ -116,8 +117,8 @@ class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
-        return BermudaOptionsFlowHandler(config_entry)
+    def async_get_options_flow(config_entry):  # noqa: ARG004 - Home Assistant passes it; the flow looks it up
+        return BermudaOptionsFlowHandler()
 
     # async def _show_config_form(self, user_input):  # pylint: disable=unused-argument
     #     """Show the configuration form to edit location data."""
@@ -130,12 +131,19 @@ class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     #     )
 
 
-class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry):
+class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlow):
     """Config flow options handler for bermuda."""
 
-    def __init__(self, config_entry: BermudaConfigEntry) -> None:
-        """Initialize HACS options flow."""
-        super().__init__(config_entry)
+    def __init__(self, config_entry: BermudaConfigEntry | None = None) -> None:
+        """
+        Initialize the options flow.
+
+        Home Assistant provides self.config_entry; passing the entry in (and the
+        OptionsFlowWithConfigEntry base that did so) is deprecated. The argument is
+        only accepted, and ignored, so older callers keep working.
+        """
+        super().__init__()
+        self._options: dict | None = None
         self.coordinator: BermudaDataUpdateCoordinator
         self.devices: dict[str, BermudaDevice]
         self._last_ref_power = None
@@ -143,6 +151,13 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
         self._last_scanner = None
         self._last_attenuation = None
         self._last_scanner_info = None
+
+    @property
+    def options(self) -> dict:
+        """Working copy of the entry's options, saved when the flow finishes."""
+        if self._options is None:
+            self._options = deepcopy(dict(self.config_entry.options))
+        return self._options
 
     async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
         """Manage the options."""

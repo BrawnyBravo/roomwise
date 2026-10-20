@@ -294,3 +294,23 @@ async def test_calibration1_scanner_that_never_heard_the_device_shows_a_translat
         (Path(__file__).parent.parent / "custom_components" / DOMAIN / "translations" / "en.json").read_text("utf-8")
     )
     assert "scanner_no_record" in en["options"]["error"]
+
+
+def test_options_flow_does_not_use_the_deprecated_base_class():
+    """OptionsFlowWithConfigEntry (and passing the entry in) is deprecated in Home Assistant."""
+    from homeassistant.config_entries import OptionsFlowWithConfigEntry
+
+    assert not issubclass(BermudaOptionsFlowHandler, OptionsFlowWithConfigEntry)
+
+
+async def test_options_flow_works_without_being_given_the_entry(
+    hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry, ha_deprecation_reports
+):
+    result = await hass.config_entries.options.async_init(setup_bermuda_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={"next_step_id": "globalopts"}
+    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], user_input=MOCK_OPTIONS_GLOBALS)
+    assert result.get("type") == FlowResultType.CREATE_ENTRY
+    assert setup_bermuda_entry.options == MOCK_OPTIONS_GLOBALS
+    assert ha_deprecation_reports() == []
