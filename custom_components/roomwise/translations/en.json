@@ -159,7 +159,7 @@
         },
         "redact": {
           "name": "Redact",
-          "description": "Set to TRUE to ensure MAC addresses are redacted in output for privacy."
+          "description": "On by default: Bluetooth addresses and identity keys are replaced with placeholders. Turn it off only for your own troubleshooting, and never post unredacted output publicly."
         }
       }
     }

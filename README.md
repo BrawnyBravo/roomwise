@@ -241,6 +241,10 @@ needs you can solve with template sensors.
 With no parameters it returns all data. The `addresses` parameter limits the result to one or more
 MAC addresses (or iBeacon UUIDs). See the parameter descriptions under Developer Tools, Actions.
 
+Only Home Assistant administrators can call it. The output is redacted by default: Bluetooth addresses
+and the identity keys of phones and watches are replaced with placeholders. Setting `redact: false`
+returns them as they are, for your own troubleshooting only; do not post that output publicly.
+
 The format of this dump is internal and may change in any release without being treated as a
 breaking change.
 

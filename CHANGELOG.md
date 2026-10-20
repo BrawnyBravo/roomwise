@@ -27,6 +27,10 @@
   even in part. An IRK lets anyone who has it follow that device, and debug logs are often posted publicly. Log lines
   now carry a short tag (like `irk#3fa9c1`) that cannot be turned back into the key. A Private BLE device that has
   not been named yet is no longer named after its key either.
+- The `roomwise.dump_devices` action can now only be called by Home Assistant administrators, and its output is
+  redacted by default. Before, any signed-in user (or any long-lived token) could get every device's Bluetooth
+  address and the identity keys of everyone's phones. Pass `redact: false` to get the raw output for your own
+  troubleshooting.
 
 ## 0.1.2 (2026-10-15)
 

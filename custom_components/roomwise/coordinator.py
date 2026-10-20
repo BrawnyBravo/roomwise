@@ -47,6 +47,7 @@ from homeassistant.helpers.device_registry import (
     EventDeviceRegistryUpdatedData,
 )
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.dt import get_age, now
 
@@ -292,8 +293,11 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.devices: dict[str, BermudaDevice] = {}
         # self.updaters: dict[str, BermudaPBDUCoordinator] = {}
 
-        # Register the dump_devices service
-        hass.services.async_register(
+        # Register the dump_devices service. Admin only: even redacted, the dump
+        # describes every device in the home and which room it is in, and
+        # unredacted it holds addresses and the identity keys (IRKs) of phones.
+        async_register_admin_service(
+            hass,
             DOMAIN,
             "dump_devices",
             self.service_dump_devices,
@@ -1711,7 +1715,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         """Return a dump of beacon advertisements by receiver."""
         out = {}
         addresses_input = call.data.get("addresses", "")
-        redact = call.data.get("redact", False)
+        redact = call.data.get("redact", True)  # redacted unless the caller asks otherwise
         configured_devices = call.data.get("configured_devices", False)
 
         # Choose filter for device/address selection
