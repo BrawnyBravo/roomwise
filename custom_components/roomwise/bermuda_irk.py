@@ -161,7 +161,9 @@ class BermudaIrkManager:
                 )
             self.fire_callbacks(irk, address)
             return result
-        if int(address[0], 16) & 0x04:
+        # A resolvable private address has 0b01 as its two top bits (first hex
+        # digit 4-7); "& 0x04" also matched random static addresses (C-F).
+        if (int(address[0:2], 16) >> 6) == 0b01:
             _LOGGER.debug("IRK does not resolve %s with %s", address, irk_tag(irk))
             return self._update_saved_mac(address, IrkTypes.NO_KNOWN_IRK_MATCH.value)
         else:
