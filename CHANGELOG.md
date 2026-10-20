@@ -39,6 +39,8 @@
 - The calibration steps no longer fail with "Unknown error" when the chosen device has not been heard since the
   restart.
 - Calibration 1 now shows a readable message when the chosen proxy has not heard the chosen device.
+- The Area, Floor, Nearest Scanner, Area Last Seen, area-switch and count sensors no longer report a made-up device
+  class (`roomwise__custom_device_class`); they now have none.
 
 ### Privacy
 

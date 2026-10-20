@@ -230,9 +230,13 @@ class BermudaSensor(BermudaEntity, SensorEntity):
 
     @property
     def device_class(self):
-        """Return de device class of the sensor."""
-        # There isn't one for "Area Names" so we'll arbitrarily define our own.
-        return "roomwise__custom_device_class"
+        """
+        Room, floor and receiver names have no device class.
+
+        (A made-up one was used before; it is not a SensorDeviceClass and Home
+        Assistant only stored it as an unknown string.)
+        """
+        return None
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
@@ -520,11 +524,6 @@ class BermudaGlobalSensor(BermudaGlobalEntity, SensorEntity):
     def name(self):
         """Return the name of the sensor."""
         return "Area"
-
-    @property
-    def device_class(self):
-        """Return de device class of the sensor."""
-        return "roomwise__custom_device_class"
 
 
 class BermudaTotalProxyCount(BermudaGlobalSensor):
