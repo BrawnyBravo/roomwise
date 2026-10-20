@@ -102,3 +102,18 @@ async def test_ibeacon_without_power_byte_clears_stale_power(feeder):
     feeder.send({76: _ibeacon(2, power=False)})
     assert feeder.source.beacon_unique_id == ID_B
     assert feeder.source.beacon_power is None
+
+
+async def test_metadevice_takes_missing_details_from_its_source(feeder):
+    """Names and manufacturer the beacon metadevice lacks are filled in from the device sending it."""
+    feeder.send({76: _ibeacon(1)})
+    metadevice = feeder.coordinator.metadevices[ID_A]
+    metadevice.manufacturer = None
+    feeder.source.manufacturer = "Test Beacons Ltd"
+    feeder.source.name_bt_local_name = "Test Beacon"
+
+    feeder.coordinator.update_metadevices()
+
+    assert metadevice.manufacturer == "Test Beacons Ltd"
+    assert metadevice.name_bt_local_name == "Test Beacon"
+    assert metadevice.beacon_unique_id == ID_A  # identity untouched

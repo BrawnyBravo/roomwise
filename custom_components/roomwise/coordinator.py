@@ -1256,36 +1256,14 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 if source_device.ref_power != metadevice.ref_power:
                     source_device.set_ref_power(metadevice.ref_power)
 
-                # anything that isn't already set to something interesting, overwrite
-                # it with the new device's data.
-                for key, val in source_device.items():
-                    if val is any(
-                        [
-                            source_device.name_bt_local_name,
-                            source_device.name_bt_serviceinfo,
-                            source_device.manufacturer,
-                        ]
-                    ) and metadevice[key] in [None, False]:
-                        metadevice[key] = val
+                # Fill in names and manufacturer the metadevice does not have yet from
+                # the source. (Beacon identity fields are deliberately not copied: an
+                # iBeacon metadevice's are its identity, and a source with different
+                # ones has been severed above; a Private BLE device has none to copy.)
+                for attr in ("name_bt_local_name", "name_bt_serviceinfo", "manufacturer"):
+                    if getattr(metadevice, attr) is None and (value := getattr(source_device, attr)) is not None:
+                        setattr(metadevice, attr, value)
                         _want_name_update = True
-
-                if _want_name_update:
-                    metadevice.make_name()
-
-                # Anything that's VERY interesting, overwrite it regardless of what's already there:
-                # INTERESTING:
-                for key, val in source_device.items():
-                    if val is any(
-                        [
-                            source_device.beacon_major,
-                            source_device.beacon_minor,
-                            source_device.beacon_power,
-                            source_device.beacon_unique_id,
-                            source_device.beacon_uuid,
-                        ]
-                    ):
-                        metadevice[key] = val
-                        # _want_name_update = True
             # Done iterating sources, remove any to be dropped
             for source in _sources_to_remove:
                 metadevice.metadevice_sources.remove(source)
