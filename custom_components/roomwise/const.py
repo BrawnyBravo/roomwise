@@ -53,6 +53,10 @@ SIGNAL_DEVICE_NEW = f"{DOMAIN}-device-new"
 SIGNAL_SCANNERS_CHANGED = f"{DOMAIN}-scanners-changed"
 
 UPDATE_INTERVAL = 1.05  # Seconds between bluetooth data processing cycles
+# How long a remote proxy gets, after Roomwise first sees it, for its integration
+# (ESPHome, Shelly) to register its network MAC before its "Distance to" sensors
+# are created with its Bluetooth address instead.
+SCANNER_NETWORK_MAC_WAIT: Final = 120
 # Note: this is separate from the CONF_UPDATE_INTERVAL which allows the
 # user to indicate how often sensors should update. We need to check bluetooth
 # stats often to get good responsiveness for beacon approaches and to make

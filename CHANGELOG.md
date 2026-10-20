@@ -32,6 +32,9 @@
   and can be set separately. Saving no longer fails with "Unknown error" when a proxy appeared or was renamed while
   the form was open or a line was deleted (that proxy keeps its saved offset), and a value that is not a number
   shows a clear error instead.
+- One proxy from an integration that does not register a network address no longer stops "Distance to <proxy>"
+  sensors from being created for every tracked device. Ready proxies get them straight away; such a proxy gets its
+  own after two minutes.
 
 ### Privacy
 
