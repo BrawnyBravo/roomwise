@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from functools import lru_cache
 from typing import Any
@@ -125,6 +126,23 @@ def rssi_to_metres(rssi, ref_power=None, attenuation=None):
         # attenuation= self.attenuation
 
     return 10 ** ((ref_power - rssi) / (10 * attenuation))
+
+
+def irk_tag(irk: bytes | str) -> str:
+    """
+    A short, non-reversible label for an IRK, safe to write to the log.
+
+    An IRK lets whoever has it follow a phone or watch across its rotating
+    addresses, and debug logs end up pasted into public issues, so key material
+    (not even a prefix of it) never goes to the log. The tag still lets log lines
+    about the same key be matched up.
+    """
+    if isinstance(irk, str):
+        try:
+            irk = bytes.fromhex(irk)
+        except ValueError:
+            irk = irk.encode()
+    return f"irk#{hashlib.sha256(irk).hexdigest()[:6]}"
 
 
 def option_in_range(key: str, value: Any) -> bool:

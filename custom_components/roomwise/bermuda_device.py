@@ -52,7 +52,7 @@ from .const import (
     METADEVICE_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_IBEACON_SOURCE,
 )
-from .util import mac_math_offset, mac_norm, name_is_address
+from .util import irk_tag, mac_math_offset, mac_norm, name_is_address
 
 if TYPE_CHECKING:
     from bleak.backends.scanner import AdvertisementData
@@ -208,6 +208,7 @@ class BermudaDevice(dict):
                     self.metadevice_type.add(METADEVICE_PRIVATE_BLE_DEVICE)
                     self.address_type = ADDR_TYPE_PRIVATE_BLE_DEVICE
                     self.beacon_unique_id = self.address
+                    self.make_name()  # the address-based default name would be the IRK itself
                     # If we've been given a private BLE address, then the integration must be up.
                     # register to get callbacks for address changes.
                     _irk_bytes = binascii.unhexlify(self.address)
@@ -215,7 +216,7 @@ class BermudaDevice(dict):
                     self._coordinator.config_entry.async_on_unload(
                         _pble_coord.async_track_service_info(self.async_handle_pble_callback, _irk_bytes)
                     )
-                    _LOGGER.debug("Private BLE Callback registered for %s, %s", self.name, self.address)
+                    _LOGGER.debug("Private BLE Callback registered for %s", self.__repr__())
                     #
                     # Also register a callback with our own, which can fake the PBLE callbacks.
                     self._coordinator.config_entry.async_on_unload(
@@ -643,11 +644,15 @@ class BermudaDevice(dict):
             or self.name_devreg
             or self.name_bt_local_name
             or self.name_bt_serviceinfo
-            or self.beacon_unique_id
+            # A Private BLE device's unique id is its IRK, which must never become
+            # a name (names are shown in the UI and written to the log).
+            or (self.beacon_unique_id if self.address_type != ADDR_TYPE_PRIVATE_BLE_DEVICE else None)
         )
 
         if _newname is not None:
             self.name = _newname
+        elif self.address_type == ADDR_TYPE_PRIVATE_BLE_DEVICE:
+            self.name = f"{DOMAIN}_{slugify(irk_tag(self.address))}"
         elif self.address_type != BDADDR_TYPE_NOT_MAC48:
             # Couldn't find anything nice, we'll have to use the address.
             # At least see if we can prefix it with manufacturer name
@@ -913,4 +918,7 @@ class BermudaDevice(dict):
 
     def __repr__(self) -> str:
         """Help debug devices and figure out what device it is at a glance."""
+        if self.address_type == ADDR_TYPE_PRIVATE_BLE_DEVICE:
+            # The address of a Private BLE device is its IRK: never log it.
+            return f"{self.name} [{irk_tag(self.address)}]"
         return f"{self.name} [{self.address}]"

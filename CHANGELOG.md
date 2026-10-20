@@ -21,6 +21,13 @@
   log. Allowed ranges: max radius at least 0.1 m, max velocity at least 0.1 m/s, away timeout at least 1 s, update
   interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
 
+### Privacy
+
+- Identity keys (IRKs) of phones and watches are no longer written to the Home Assistant log, at any log level, not
+  even in part. An IRK lets anyone who has it follow that device, and debug logs are often posted publicly. Log lines
+  now carry a short tag (like `irk#3fa9c1`) that cannot be turned back into the key. A Private BLE device that has
+  not been named yet is no longer named after its key either.
+
 ## 0.1.2 (2026-10-15)
 
 ### Added

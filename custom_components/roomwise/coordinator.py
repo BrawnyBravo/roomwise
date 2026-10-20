@@ -744,7 +744,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             for address, device in self.devices.items():
                 if device.create_sensor:
                     if not device.create_all_done:
-                        _LOGGER.debug("Firing device_new for %s (%s)", device.name, address)
+                        _LOGGER.debug("Firing device_new for %s", device.__repr__())
                         # Note that the below should be OK thread-wise, debugger indicates this is being
                         # called by _run in events.py, so pretty sure we are "in the event loop".
                         async_dispatcher_send(self.hass, SIGNAL_DEVICE_NEW, address)
