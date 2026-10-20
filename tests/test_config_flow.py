@@ -245,3 +245,27 @@ async def test_calibration2_non_numeric_offset_is_a_form_error(hass: HomeAssista
     result = await flow.async_step_calibration2_scanners(user_input=_save({"scanner a": "loud"}))
     assert result["type"] == FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_offset"}
+
+
+async def test_calibration_with_a_device_not_in_memory(hass: HomeAssistant):
+    """A Roomwise device that is in the registry but not (yet) in memory must not crash the calibration steps."""
+    from homeassistant.helpers import device_registry as dr
+
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    entry = MockConfigEntry(domain="test_other")
+    entry.add_to_hass(hass)
+    reg_device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, connections={(dr.CONNECTION_BLUETOOTH, "AA:BB:CC:DD:EE:99")}
+    )
+    assert flow._get_bermuda_device_from_registry(reg_device.id) is None
+
+    result = await flow.async_step_calibration2_scanners(
+        user_input={CONF_DEVICES: reg_device.id, CONF_SCANNER_INFO: {}, CONF_SAVE_AND_CLOSE: False}
+    )
+    assert result["type"] == FlowResultType.FORM
+
+    # A device value that is not an id (the selector cleared) does not crash either.
+    result = await flow.async_step_calibration2_scanners(
+        user_input={CONF_DEVICES: None, CONF_SCANNER_INFO: {}, CONF_SAVE_AND_CLOSE: False}
+    )
+    assert result["type"] == FlowResultType.FORM

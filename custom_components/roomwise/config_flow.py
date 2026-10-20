@@ -529,6 +529,7 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                 data_schema=vol.Schema(data_schema),
                 description_placeholders={"suffix": "After you click Submit, the new distances will be shown here."},
             )
+        device = None
         if isinstance(self._last_device, str):
             device = self._get_bermuda_device_from_registry(self._last_device)
         results_str = ""
@@ -629,7 +630,9 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                     device_address = connection[1]
                     break
             if device_address is not None:
-                return self.coordinator.devices[device_address.lower()]
+                # It may be in the registry but not in memory (pruned, or not heard
+                # since the restart).
+                return self.coordinator.devices.get(device_address.lower())
         # We couldn't match the HA device id to a bermuda device mac.
         return None
 

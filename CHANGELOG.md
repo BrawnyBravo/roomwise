@@ -36,6 +36,8 @@
   sensors from being created for every tracked device. Ready proxies get them straight away; such a proxy gets its
   own after two minutes.
 - "Area Last Seen" no longer shows the word "None" as a room after a restart when it had no room saved.
+- The calibration steps no longer fail with "Unknown error" when the chosen device has not been heard since the
+  restart.
 
 ### Privacy
 
