@@ -20,6 +20,8 @@
   its full listening time). A bad value saved by an older version is replaced by the default, with a warning in the
   log. Allowed ranges: max radius at least 0.1 m, max velocity at least 0.1 m/s, away timeout at least 1 s, update
   interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
+- `dump_devices` with `configured_devices` now includes Private BLE devices (phones and watches) and their current
+  addresses; before, it matched them by the wrong key and left them out.
 
 ### Privacy
 

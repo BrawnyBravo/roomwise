@@ -1727,8 +1727,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             # configured and scanners
             addresses += self.scanner_list
             addresses += self.options.get(CONF_DEVICES, [])
-            # known IRK/Private BLE Devices
-            addresses += self.pb_state_sources
+            # known IRK/Private BLE Devices (pb_state_sources is keyed by entity id,
+            # so take its values: the current source address of each device)
+            addresses += self.metadevices
+            addresses += [address for address in self.pb_state_sources.values() if address]
 
         # lowercase all the addresses for matching
         addresses = list(map(str.lower, addresses))
