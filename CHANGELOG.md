@@ -50,6 +50,8 @@
 - Changing a device's reference power no longer makes its room flicker to a receiver the room rules would not pick.
 - Auto-tune notes about devices in rooms without a receiver now name the receiver that actually holds them, never
   one without a room.
+- Auto-tune's Apply no longer rounds offsets it did not change (a 2.5 dB offset set by hand stays 2.5), and saves
+  the offsets it did change exactly as it scored them.
 
 ### Privacy
 

@@ -319,7 +319,10 @@ def settings_to_options(report: TuneReport, options: dict) -> dict:
     """The option values to save, in the same shape manual calibration saves them."""
     new = dict(options.get(CONF_RSSI_OFFSETS, {}) or {})
     for sid, value in report.proposed.offsets.items():
-        new[sid] = max(min(round(value), 127), -127)  # same clip as calibration2 (#497)
+        if value == report.current.offset(sid):
+            continue  # not changed by the tuner: keep the saved value exactly as it is
+        # Saved as scored (no rounding), clipped like calibration2 (#497).
+        new[sid] = max(min(value, 127), -127)
     out = {CONF_RSSI_OFFSETS: new}
     if report.proposed.radii or options.get(CONF_SCANNER_MAX_RADIUS):
         out[CONF_SCANNER_MAX_RADIUS] = dict(report.proposed.radii)

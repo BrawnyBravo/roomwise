@@ -399,3 +399,13 @@ async def test_candidates_list_fixed_steady_addresses(hass: HomeAssistant, house
         assert addr not in by_addr, addr
     # ticked ones come first
     assert [c.suggested for c in cands] == sorted([c.suggested for c in cands], reverse=True)
+
+
+def test_apply_keeps_untouched_offsets_exactly_and_saves_what_was_scored():
+    """A 2.5 dB manual offset the tuner left alone is not rounded; a changed one is saved as scored."""
+    current = at.Settings(-55.0, 3.0, 20.0, {SCN_A: 2.5, SCN_B: 0})
+    proposed = at.Settings(-55.0, 3.0, 20.0, {SCN_A: 2.5, SCN_B: -3.5})
+    report = _report(True)
+    report.current, report.proposed = current, proposed
+    out = autotune_ha.settings_to_options(report, {CONF_RSSI_OFFSETS: {SCN_A: 2.5}})
+    assert out[CONF_RSSI_OFFSETS] == {SCN_A: 2.5, SCN_B: -3.5}
