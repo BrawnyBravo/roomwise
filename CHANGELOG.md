@@ -44,6 +44,7 @@
 - Less work on busy installs: entities no longer rewrite an unchanged state every second.
 - Adding your first floor, putting a room on a floor or renaming a room now takes effect without a restart (Floor
   sensors are added for devices that did not have one).
+- The `floor_level` attribute of the Area and Floor sensors now holds the floor's level (it was always empty).
 
 ### Privacy
 

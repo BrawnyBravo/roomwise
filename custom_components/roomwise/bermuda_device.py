@@ -134,7 +134,7 @@ class BermudaDevice:
         self.floor_id: str | None = None
         self.floor_name: str | None = None
         self.floor_icon: str = ICON_DEFAULT_FLOOR
-        self.floor_level: str | None = None
+        self.floor_level: int | None = None
 
         self.zone: str = STATE_NOT_HOME  # STATE_HOME or STATE_NOT_HOME
         self.manufacturer: str | None = None
@@ -508,7 +508,7 @@ class BermudaDevice:
                 if self.floor is not None:
                     self.floor_name = self.floor.name
                     self.floor_icon = self.floor.icon or ICON_DEFAULT_FLOOR
-                    self.floor_level = self.floor_level
+                    self.floor_level = self.floor.level
                 else:
                     # floor_id was invalid
                     _LOGGER_SPAM_LESS.warning(
@@ -526,6 +526,7 @@ class BermudaDevice:
                 self.floor = None
                 self.floor_name = None
                 self.floor_icon = ICON_DEFAULT_FLOOR
+                self.floor_level = None
         else:
             _LOGGER_SPAM_LESS.warning(
                 f"no_area_on_update{self.name}",
@@ -540,6 +541,7 @@ class BermudaDevice:
             self.floor_id = None
             self.floor_name = None
             self.floor_icon = ICON_DEFAULT_FLOOR
+            self.floor_level = None
 
     def async_as_scanner_update(self, ha_scanner: BaseHaScanner):
         """
