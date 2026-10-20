@@ -75,6 +75,7 @@ async def async_setup_entry(
             entities.append(BermudaSensor(coordinator, entry, address))
             if coordinator.have_floors:
                 entities.append(BermudaSensorFloor(coordinator, entry, address))
+                created_floors.add(address)
             entities.append(BermudaSensorRange(coordinator, entry, address))
             entities.append(BermudaSensorScanner(coordinator, entry, address))
             entities.append(BermudaSensorRssi(coordinator, entry, address))
@@ -96,6 +97,7 @@ async def async_setup_entry(
         coordinator.sensor_created(address)
 
     waiting_scanners: set[str] = set()  # scanners not ready for their entities yet
+    created_floors: set[str] = set()  # devices that have their Floor sensor
 
     def create_scanner_entities():
         # These are per-proxy entities on each device, and scanners may come and
@@ -142,6 +144,11 @@ async def async_setup_entry(
         """On each update, create entities for scanners that have become ready."""
         if waiting_scanners and created_devices:
             create_scanner_entities()
+        # Floor sensors for devices set up before the first floor existed.
+        if coordinator.have_floors and len(created_floors) < len(created_devices):
+            missing = [address for address in created_devices if address not in created_floors]
+            async_add_entities([BermudaSensorFloor(coordinator, entry, address) for address in missing], False)
+            created_floors.update(missing)
 
     # Connect device_new to a signal so the coordinator can call it
     _LOGGER.debug("Registering device_new and scanners_changed callbacks")

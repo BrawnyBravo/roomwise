@@ -250,6 +250,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.config_entry.async_on_unload(
             self.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, self.handle_devreg_changes)
         )
+        # Rooms and floors: a renamed room, a room moved to a floor, or the first
+        # floor being added must not need a restart to show up.
+        for _event in (ar.EVENT_AREA_REGISTRY_UPDATED, fr.EVENT_FLOOR_REGISTRY_UPDATED):
+            self.config_entry.async_on_unload(self.hass.bus.async_listen(_event, self.handle_area_floor_changes))
 
         self.options = {}
 
@@ -422,6 +426,12 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         finally:
             # Ensure that an issue reading these files (which are optional, really) doesn't stop the whole show.
             self._waitingfor_load_manufacturer_ids = False
+
+    @callback
+    def handle_area_floor_changes(self, _ev: Event) -> None:
+        """Re-check for floors and re-read the scanners' rooms after an area or floor change."""
+        self.have_floors = self.init_floors()
+        self._scanner_init_pending = True
 
     @callback
     def handle_devreg_changes(self, ev: Event[EventDeviceRegistryUpdatedData]):

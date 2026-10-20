@@ -42,6 +42,8 @@
 - The Area, Floor, Nearest Scanner, Area Last Seen, area-switch and count sensors no longer report a made-up device
   class (`roomwise__custom_device_class`); they now have none.
 - Less work on busy installs: entities no longer rewrite an unchanged state every second.
+- Adding your first floor, putting a room on a floor or renaming a room now takes effect without a restart (Floor
+  sensors are added for devices that did not have one).
 
 ### Privacy
 
