@@ -41,6 +41,7 @@
 - Calibration 1 now shows a readable message when the chosen proxy has not heard the chosen device.
 - The Area, Floor, Nearest Scanner, Area Last Seen, area-switch and count sensors no longer report a made-up device
   class (`roomwise__custom_device_class`); they now have none.
+- Less work on busy installs: entities no longer rewrite an unchanged state every second.
 
 ### Privacy
 
