@@ -177,6 +177,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.update_in_progress: bool = False  # A lock to guard against huge backlogs / slow processing
         self.stamp_last_update: float = 0  # Last time we ran an update, from monotonic_time_coarse()
         self.stamp_last_update_started: float = 0
+        # When an advert last triggered an update attempt (see async_handle_advert).
+        self._stamp_last_advert_update_attempt: float = 0
         self.stamp_last_prune: float = 0  # When we last pruned device list
 
         self.member_uuids = {}
@@ -531,8 +533,23 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # If there are no active entities created after Bermuda's
         # initial setup, then no updates will be triggered on the co-ordinator.
         # So let's check if we haven't updated recently, and do so...
-        if self.stamp_last_update < monotonic_time_coarse() - (UPDATE_INTERVAL * 2):
-            self._async_update_data_internal()
+        #
+        # The attempt is stamped *before* running: stamp_last_update only moves
+        # on success, so after a failing cycle every advert from every device
+        # (often hundreds a second) would otherwise run the whole update again,
+        # fail again and hand the traceback to the Bluetooth stack each time.
+        nowstamp = monotonic_time_coarse()
+        cutoff = nowstamp - (UPDATE_INTERVAL * 2)
+        if self.stamp_last_update < cutoff and self._stamp_last_advert_update_attempt < cutoff:
+            self._stamp_last_advert_update_attempt = nowstamp
+            try:
+                self._async_update_data_internal()
+            except Exception:  # noqa: BLE001 - must not escape into the Bluetooth callback
+                _LOGGER_SPAM_LESS.error(
+                    "advert_update_failed",
+                    "Roomwise update triggered by a Bluetooth advert failed",
+                    exc_info=True,
+                )
 
     def _check_all_platforms_created(self, address):
         """Checks if all platforms have finished loading a device's entities."""

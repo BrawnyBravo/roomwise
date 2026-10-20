@@ -7,6 +7,9 @@
 - Putting a proxy in a room, moving it to another room or renaming it in Home Assistant now takes effect straight
   away. Before, Roomwise kept using the old room and name until Home Assistant restarted, so the "proxies without a
   room" repair stayed up and nobody was placed in the newly assigned room.
+- If an update cycle ever fails, Roomwise no longer retries it on every Bluetooth advert (often hundreds a second),
+  which could tie up a processor core and flood the log. It now retries at most once every couple of seconds and
+  logs the error once.
 
 ## 0.1.2 (2026-10-15)
 
