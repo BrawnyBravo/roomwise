@@ -24,6 +24,10 @@
   addresses; before, it matched them by the wrong key and left them out.
 - The "area switch" diagnostic is recorded again when a device moves from one receiver to another (it was only
   updated when a device became placed or unplaced).
+- Deleting a tracked device (or iBeacon) from its device page now sticks: it is also removed from Select Devices, so
+  it no longer comes back with all its entities after the next restart. Private BLE devices (phones and watches)
+  are tracked automatically, so the delete button now says no and the log explains to remove them in the Private
+  BLE Device integration instead.
 
 ### Privacy
 
