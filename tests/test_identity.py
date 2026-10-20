@@ -58,3 +58,24 @@ def test_moving_between_receivers_records_the_area_switch():
     BermudaDataUpdateCoordinator._refresh_area_by_min_distance(coord, device)  # noqa: SLF001
     assert chosen["adv"] is office
     assert device.diag_area_switch is not None
+
+
+def test_changing_ref_power_keeps_the_room_and_updates_its_distance():
+    """The room is not re-picked outside the normal rules (no-room receivers, max radius, hysteresis)."""
+    coordinator = MagicMock(options={})
+    device = BermudaDevice("aa:bb:cc:dd:ee:01", coordinator)
+    kitchen = _advert(_scanner("aa:bb:cc:dd:ee:10", "Kitchen"), 3.0)
+    no_room = _advert(_scanner("aa:bb:cc:dd:ee:20", None), 3.0)
+    for advert, rssi in ((kitchen, -70), (no_room, -50)):  # the receiver without a room reads closer
+        advert.rssi = rssi
+        advert.conf_ref_power = -55
+        advert.conf_attenuation = 3
+    device.adverts = {("d", "k"): kitchen, ("d", "n"): no_room}
+    device.area_advert = kitchen
+    device.area_id = "Kitchen"
+
+    device.set_ref_power(-60)
+
+    assert device.area_advert is kitchen
+    assert device.area_id == "Kitchen"
+    assert device.area_distance == kitchen.rssi_distance

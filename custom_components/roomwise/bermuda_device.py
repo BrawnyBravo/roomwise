@@ -677,19 +677,14 @@ class BermudaDevice:
         if new_ref_power != self.ref_power:
             # it's actually changed, proceed...
             self.ref_power = new_ref_power
-            nearest_distance = 9999  # running tally to find closest scanner
-            nearest_scanner = None
             for advert in self.adverts.values():
-                rawdist = advert.set_ref_power(new_ref_power)
-                if rawdist is not None and rawdist < nearest_distance:
-                    nearest_distance = rawdist
-                    nearest_scanner = advert
-            # Even though the actual scanner should not have changed (it should
-            # remain none or a given scanner, since the relative distances won't have
-            # changed due to ref_power), we still call apply so that the new area_distance
-            # gets applied.
-            # if nearest_scanner is not None:
-            self.apply_scanner_selection(nearest_scanner)
+                advert.set_ref_power(new_ref_power)
+            # Show the new distance to the current room's receiver straight away.
+            # The room itself is left to the coordinator's next update: picking the
+            # receiver with the smallest raw distance here ignored receivers without
+            # a room, max radius, hysteresis and stale readings, so the room flickered.
+            if self.area_advert is not None and self.area_advert.rssi_distance is not None:
+                self.area_distance = self.area_advert.rssi_distance
             # Update the stamp so that the BermudaEntity can clear the cache and show the
             # new measurement(s) immediately.
             self.ref_power_changed = monotonic_time_coarse()
