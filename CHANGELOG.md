@@ -52,6 +52,8 @@
   one without a room.
 - Auto-tune's Apply no longer rounds offsets it did not change (a 2.5 dB offset set by hand stays 2.5), and saves
   the offsets it did change exactly as it scored them.
+- If Roomwise is reloaded while auto-tune is listening, the run now stops and says it failed, instead of carrying on
+  with nothing to listen to and reporting every device as not heard.
 
 ### Privacy
 

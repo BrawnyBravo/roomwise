@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -409,3 +411,46 @@ def test_apply_keeps_untouched_offsets_exactly_and_saves_what_was_scored():
     report.current, report.proposed = current, proposed
     out = autotune_ha.settings_to_options(report, {CONF_RSSI_OFFSETS: {SCN_A: 2.5}})
     assert out[CONF_RSSI_OFFSETS] == {SCN_A: 2.5, SCN_B: -3.5}
+
+
+def _collect_flow(hass, entry):
+    from custom_components.roomwise.config_flow import BermudaOptionsFlowHandler
+
+    flow = BermudaOptionsFlowHandler()
+    flow.hass = hass
+    flow.handler = entry.entry_id
+    flow.flow_id = "test_flow"
+    flow.coordinator = entry.runtime_data.coordinator
+    flow._autotune_found = None
+    flow._autotune_landmarks = []
+    flow._autotune_minutes = 1
+    flow._autotune_export = False
+    flow._autotune_task = None
+    return flow
+
+
+async def test_cancelled_autotune_run_ends_in_the_failed_step(
+    hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry
+):
+    flow = _collect_flow(hass, setup_bermuda_entry)
+    flow._autotune_task = hass.async_create_task(asyncio.sleep(3600))
+    flow._autotune_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await flow._autotune_task
+    result = await flow.async_step_autotune_collect()
+    assert result["type"] == FlowResultType.SHOW_PROGRESS_DONE
+    assert result["step_id"] == "autotune_failed"
+
+
+async def test_unloading_roomwise_stops_a_running_autotune(hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry):
+    async def forever(*_args, **_kwargs):
+        await asyncio.sleep(3600)
+
+    flow = _collect_flow(hass, setup_bermuda_entry)
+    with patch("custom_components.roomwise.autotune_flow.async_run_autotune", side_effect=forever):
+        result = await flow.async_step_autotune_collect()
+    assert result["type"] == FlowResultType.SHOW_PROGRESS
+    task = flow._autotune_task
+    assert await hass.config_entries.async_unload(setup_bermuda_entry.entry_id)
+    await hass.async_block_till_done()
+    assert task.cancelled()

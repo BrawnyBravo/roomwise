@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -32,8 +33,6 @@ from .autotune_ha import (
 from .const import CONF_MAX_RADIUS, CONF_RSSI_OFFSETS, CONF_SCANNER_MAX_RADIUS, DEFAULT_MAX_RADIUS
 
 if TYPE_CHECKING:
-    import asyncio
-
     from .autotune import TuneReport
     from .autotune_ha import Candidate, Discovery
 
@@ -166,6 +165,14 @@ class AutotuneOptionsMixin:
                 "roomwise autotune",
                 eager_start=False,  # always go through the progress screen
             )
+            # The run listens to this coordinator; if the integration unloads or
+            # reloads (up to an hour later), stop it rather than collect nothing.
+            task = self._autotune_task
+
+            def _stop_run() -> None:
+                task.cancel()  # its return value must not reach the unload machinery
+
+            self.config_entry.async_on_unload(_stop_run)
         if not self._autotune_task.done():
             return self.async_show_progress(
                 step_id="autotune_collect",
@@ -175,6 +182,10 @@ class AutotuneOptionsMixin:
             )
         try:
             self._autotune_report = self._autotune_task.result()
+        except asyncio.CancelledError:
+            # Not an Exception, so it used to escape this handler.
+            _LOGGER.warning("Auto-tune was stopped before it finished (Roomwise was reloaded or unloaded)")
+            return self.async_show_progress_done(next_step_id="autotune_failed")
         except Exception:
             _LOGGER.exception("Auto-tune failed")
             return self.async_show_progress_done(next_step_id="autotune_failed")
