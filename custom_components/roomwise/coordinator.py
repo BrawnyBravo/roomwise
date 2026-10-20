@@ -98,6 +98,8 @@ from .const import (
 )
 from .util import mac_explode_formats, mac_norm, redact_addresses, sanitize_options, snapshot_data
 
+MANUFACTURER_ID_DIR = Path(__file__).parent / "manufacturer_identification"
+
 if TYPE_CHECKING:
     from habluetooth import BaseHaScanner, BluetoothServiceInfoBleak
     from homeassistant.components.bluetooth import (
@@ -121,7 +123,7 @@ Cancellable = Callable[[], None]
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
-def _load_manufacturer_ids(member_path: str, company_path: str) -> tuple[dict[int, str], dict[int, str]]:
+def _load_manufacturer_ids(member_path: str | Path, company_path: str | Path) -> tuple[dict[int, str], dict[int, str]]:
     """Read the Bluetooth SIG name tables. Blocking: run in the executor."""
     with Path(member_path).open(encoding="utf-8") as f:
         mi_yaml = yaml.load(f, Loader=YAML_LOADER)["uuids"]  # noqa: S506 - safe loader
@@ -406,14 +408,12 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_load_manufacturer_ids(self):
         """Import yaml files containing manufacturer name mappings."""
         try:
+            # Next to this file, wherever the integration is installed (not
+            # assumed to be under the config folder's custom_components).
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/member_uuids.yaml
-            member_path = self.hass.config.path(
-                f"custom_components/{DOMAIN}/manufacturer_identification/member_uuids.yaml"
-            )
+            member_path = MANUFACTURER_ID_DIR / "member_uuids.yaml"
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/company_identifiers/company_identifiers.yaml
-            company_path = self.hass.config.path(
-                f"custom_components/{DOMAIN}/manufacturer_identification/company_identifiers.yaml"
-            )
+            company_path = MANUFACTURER_ID_DIR / "company_identifiers.yaml"
             # Reading and parsing ~200 KB of YAML blocks for a noticeable time, so
             # it runs in the executor rather than on the event loop.
             self.member_uuids, self.company_uuids = await self.hass.async_add_executor_job(
