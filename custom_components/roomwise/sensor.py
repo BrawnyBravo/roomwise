@@ -503,7 +503,10 @@ class BermudaSensorAreaLastSeen(BermudaSensor, RestoreSensor):
     async def async_added_to_hass(self) -> None:
         """Restore last saved value before adding to HASS."""
         await super().async_added_to_hass()
-        if (sensor_data := await self.async_get_last_sensor_data()) is not None:
+        if (sensor_data := await self.async_get_last_sensor_data()) is not None and (
+            sensor_data.native_value is not None
+        ):
+            # An unknown last state stays unknown (str() made it the text "None").
             self._attr_native_value = str(sensor_data.native_value)
             self._device.area_last_seen = str(sensor_data.native_value)
 
