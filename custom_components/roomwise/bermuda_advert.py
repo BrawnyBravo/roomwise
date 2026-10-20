@@ -209,7 +209,7 @@ class BermudaAdvert:
             # of the true inter-packet interval. For stamps from local bluetooth
             # adaptors (usb dongles) it reflects "Which update cycle last saw a
             # different rssi", which will be a multiple of our update interval.
-            if new_stamp is not None and self.stamp is not None:
+            if new_stamp is not None and self.stamp:  # stamp starts at 0, not None
                 _interval = new_stamp - self.stamp
             else:
                 _interval = None

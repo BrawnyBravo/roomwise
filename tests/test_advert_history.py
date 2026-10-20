@@ -36,3 +36,11 @@ def test_repeated_service_data_does_not_rebuild_the_name():
     for i in range(6):
         advert.update_advertisement(_data(-62 - i, a if i % 2 == 0 else b), scanner)
     parent.make_name.assert_not_called()
+
+
+def test_first_interval_is_unknown_not_the_clock():
+    parent, scanner, advert = _advert(_data(-60, {}))
+    assert advert.hist_interval == [None]  # was the whole monotonic clock (days of seconds)
+    advert.stamp -= 2.0  # pretend the first advert was 2 s ago
+    advert.update_advertisement(_data(-65, {}), scanner)
+    assert 0 < advert.hist_interval[0] < 10
