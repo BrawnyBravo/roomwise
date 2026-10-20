@@ -49,6 +49,7 @@ from .const import (
     DOMAIN,
     DOMAIN_PRIVATE_BLE_DEVICE,
     NAME,
+    OPTION_RANGES,
 )
 from .util import mac_redact, rssi_to_metres
 
@@ -63,6 +64,12 @@ if TYPE_CHECKING:
 # from homeassistant import data_entry_flow
 
 # from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+
+def _ranged(key: str, kind: type = float) -> vol.All:
+    """Validator for a global option: a number of the given kind inside its allowed range."""
+    low, high = OPTION_RANGES[key]
+    return vol.All(vol.Coerce(kind), vol.Range(min=low, max=high))
 
 
 class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -208,31 +215,31 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             vol.Required(
                 CONF_MAX_RADIUS,
                 default=self.options.get(CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_MAX_RADIUS),
             vol.Required(
                 CONF_MAX_VELOCITY,
                 default=self.options.get(CONF_MAX_VELOCITY, DEFAULT_MAX_VELOCITY),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_MAX_VELOCITY),
             vol.Required(
                 CONF_DEVTRACK_TIMEOUT,
                 default=self.options.get(CONF_DEVTRACK_TIMEOUT, DEFAULT_DEVTRACK_TIMEOUT),
-            ): vol.Coerce(int),
+            ): _ranged(CONF_DEVTRACK_TIMEOUT, int),
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=self.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_UPDATE_INTERVAL),
             vol.Required(
                 CONF_SMOOTHING_SAMPLES,
                 default=self.options.get(CONF_SMOOTHING_SAMPLES, DEFAULT_SMOOTHING_SAMPLES),
-            ): vol.Coerce(int),
+            ): _ranged(CONF_SMOOTHING_SAMPLES, int),
             vol.Required(
                 CONF_ATTENUATION,
                 default=self.options.get(CONF_ATTENUATION, DEFAULT_ATTENUATION),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_ATTENUATION),
             vol.Required(
                 CONF_REF_POWER,
                 default=self.options.get(CONF_REF_POWER, DEFAULT_REF_POWER),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_REF_POWER),
         }
 
         return self.async_show_form(step_id="globalopts", data_schema=vol.Schema(data_schema))
@@ -399,13 +406,13 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                 default=self._last_ref_power
                 if self._last_ref_power is not None
                 else self.options.get(CONF_REF_POWER, DEFAULT_REF_POWER),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_REF_POWER),
             vol.Required(
                 CONF_ATTENUATION,
                 default=self._last_attenuation
                 if self._last_attenuation is not None
                 else self.options.get(CONF_ATTENUATION, DEFAULT_ATTENUATION),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_ATTENUATION),
             vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
         }
         if user_input is None:

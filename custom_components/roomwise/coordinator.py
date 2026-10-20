@@ -95,7 +95,7 @@ from .const import (
     SIGNAL_SCANNERS_CHANGED,
     UPDATE_INTERVAL,
 )
-from .util import mac_explode_formats, mac_norm, redact_addresses, snapshot_data
+from .util import mac_explode_formats, mac_norm, redact_addresses, sanitize_options, snapshot_data
 
 if TYPE_CHECKING:
     from habluetooth import BaseHaScanner, BluetoothServiceInfoBleak
@@ -279,6 +279,15 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     CONF_SCANNER_MAX_RADIUS,
                 ):
                     self.options[key] = val
+
+        # A saved value out of range (attenuation 0 divides by zero on every advert)
+        # falls back to the default rather than taking the update loop down.
+        if fixed := sanitize_options(self.options):
+            _LOGGER.warning(
+                "Ignoring out-of-range Roomwise option(s) %s and using the default; "
+                "set a valid value under Configure > Global Options",
+                ", ".join(fixed),
+            )
 
         self.devices: dict[str, BermudaDevice] = {}
         # self.updaters: dict[str, BermudaPBDUCoordinator] = {}

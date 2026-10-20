@@ -15,6 +15,11 @@
   while an old identity kept a location.
 - Apple frames too short to be an iBeacon no longer create a shared, nameless beacon that merged unrelated devices,
   and devices that alternate an iBeacon with another payload are no longer re-matched on every packet.
+- Global Options and Calibration 1 now refuse values that break the distance maths (for example an attenuation of 0,
+  which stopped every device from getting a distance or room, or a max radius of 0, which made auto-tune fail after
+  its full listening time). A bad value saved by an older version is replaced by the default, with a warning in the
+  log. Allowed ranges: max radius at least 0.1 m, max velocity at least 0.1 m/s, away timeout at least 1 s, update
+  interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
 
 ## 0.1.2 (2026-10-15)
 

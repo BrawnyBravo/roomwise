@@ -6,6 +6,8 @@ import re
 from functools import lru_cache
 from typing import Any
 
+from .const import OPTION_DEFAULTS, OPTION_RANGES
+
 
 @lru_cache(64)
 def mac_math_offset(mac, offset=0) -> str | None:
@@ -123,6 +125,30 @@ def rssi_to_metres(rssi, ref_power=None, attenuation=None):
         # attenuation= self.attenuation
 
     return 10 ** ((ref_power - rssi) / (10 * attenuation))
+
+
+def option_in_range(key: str, value: Any) -> bool:
+    """True if value is a number inside the allowed range for this global option."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    low, high = OPTION_RANGES.get(key, (None, None))
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
+def sanitize_options(options: dict) -> list[str]:
+    """
+    Replace saved global option values that are out of range with their defaults, in place.
+
+    The options form refuses such values, but one saved before it did (or edited
+    by hand) must not crash the distance maths or auto-tune. Returns the keys
+    that were replaced.
+    """
+    fixed = []
+    for key, default in OPTION_DEFAULTS.items():
+        if key in options and not option_in_range(key, options[key]):
+            options[key] = default
+            fixed.append(key)
+    return fixed
 
 
 @lru_cache(256)
