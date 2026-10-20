@@ -63,3 +63,37 @@ def test_prune_expires_old_addresses():
         now[0] += PRUNE_TIME_KNOWN_IRK + 1
         manager.async_prune()
     assert manager.known_macs(resolved=False) == {}
+
+
+def test_address_still_heard_stays_cached_and_matches_a_key_added_later():
+    manager = BermudaIrkManager()
+    address = resolvable_address(IRK)
+    now = [1000.0]
+    with patch.object(bermuda_irk, "monotonic_time_coarse", side_effect=lambda: now[0]):
+        manager.check_mac(address)  # heard, no key known yet
+        for _ in range(3):  # heard continuously for well over the expiry time
+            now[0] += PRUNE_TIME_KNOWN_IRK - 60
+            manager.async_prune(in_use=[address])
+        assert address in manager.known_macs(resolved=False)
+        # The user now adds the phone as a Private BLE device: its current address matches.
+        assert manager.add_irk(IRK) == [address]
+
+
+async def test_coordinator_prune_keeps_addresses_still_heard(hass, bypass_get_data, setup_bermuda_entry):
+    import custom_components.roomwise.coordinator as coordinator_module
+
+    coordinator = setup_bermuda_entry.runtime_data.coordinator
+    heard = resolvable_address(OTHER_IRK)
+    gone = resolvable_address(OTHER_IRK, b"Ufw")
+    for address in (heard, gone):
+        coordinator._get_or_create_device(address).create_sensor = True  # keep the devices themselves
+    later = bermuda_irk.monotonic_time_coarse() + PRUNE_TIME_KNOWN_IRK + 60
+    coordinator.devices[heard].last_seen = later - 5  # still being heard
+    with (
+        patch.object(bermuda_irk, "monotonic_time_coarse", return_value=later),
+        patch.object(coordinator_module, "monotonic_time_coarse", return_value=later),
+    ):
+        coordinator.prune_devices(force_pruning=True)
+    cached = coordinator.irk_manager.known_macs(resolved=False)
+    assert heard in cached
+    assert gone not in cached

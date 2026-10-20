@@ -204,7 +204,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self._hascanner_timestamps: dict[str, dict[str, float]] = {}  # scanner_address, device_address, stamp
         self._scanner_list: set[str] = set()
         self._scanners: set[BermudaDevice] = set()  # Set of all in self.devices that is_scanner=True
-        self.irk_manager = BermudaIrkManager()
+        self.irk_manager = BermudaIrkManager(in_use=self._irk_addresses_in_use)
 
         self.ar = ar.async_get(self.hass)
         self.er = er.async_get(self.hass)
@@ -335,6 +335,15 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
     @property
     def get_scanners(self) -> set[BermudaDevice]:
         return self._scanners
+
+    def _irk_addresses_in_use(self) -> list[str]:
+        """Resolvable private addresses heard recently: the IRK cache keeps these."""
+        stamp = monotonic_time_coarse() - PRUNE_TIME_KNOWN_IRK
+        return [
+            address
+            for address, device in self.devices.items()
+            if device.address_type == BDADDR_TYPE_RANDOM_RESOLVABLE and device.last_seen > stamp
+        ]
 
     def init_floors(self) -> bool:
         """Check if the system has floors configured, and enable sensors."""
@@ -846,7 +855,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             self.redactions.clear()
             self.stamp_redactions_expiry = None
 
-        # Prune any IRK MACs that have expired
+        # Prune any IRK MACs that have expired (keeping the ones still being heard,
+        # see _irk_addresses_in_use).
         self.irk_manager.async_prune()
 
         # Prune devices.

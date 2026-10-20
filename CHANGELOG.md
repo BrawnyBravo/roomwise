@@ -45,6 +45,8 @@
 - Adding your first floor, putting a room on a floor or renaming a room now takes effect without a restart (Floor
   sensors are added for devices that did not have one).
 - The `floor_level` attribute of the Area and Floor sensors now holds the floor's level (it was always empty).
+- A phone or watch added as a Private BLE device is matched to the address it is using right now, even when that
+  address has been in use for a long time.
 
 ### Privacy
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from math import floor
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -46,7 +46,9 @@ class BermudaIrkManager:
     - check_mac() whenever (results are cached)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, in_use: Callable[[], Iterable[str]] | None = None) -> None:
+        # Optional: returns the addresses still being heard, which async_prune keeps.
+        self._in_use = in_use
         self._irks: dict[bytes, Cipher] = {}
         self._macs: dict[str, ResolvableMAC] = {}
         self._irk_callbacks: dict[bytes, list[BluetoothCallback]] = {}
@@ -83,14 +85,24 @@ class BermudaIrkManager:
         # otherwise, all of 'em
         return self._macs.copy()
 
-    def async_prune(self):
+    def async_prune(self, in_use: Iterable[str] | None = None):
         """
         Check for expired MACs and expunge them.
 
         We cannot know if an old MAC will return, so we keep them around for the
         max permissable time (according to the Bluetooth spec), then let them go.
+
+        Addresses in in_use (still being heard) get a fresh expiry instead: an
+        address heard for longer than the expiry is still the device's current
+        one, and a Private BLE device added later must be able to match it.
         """
         nowstamp = monotonic_time_coarse()
+        new_expiry = floor(nowstamp + PRUNE_TIME_KNOWN_IRK)
+        if in_use is None:
+            in_use = self._in_use() if self._in_use is not None else ()
+        for address in in_use:
+            if (macirk := self._macs.get(address)) is not None:
+                self._macs[address] = macirk._replace(expires=new_expiry)
         expired = [macirk.mac for macirk in self._macs.values() if macirk.expires < nowstamp]
         for address in expired:
             del self._macs[address]
