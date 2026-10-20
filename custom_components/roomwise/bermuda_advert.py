@@ -269,7 +269,7 @@ class BermudaAdvert:
 
         if len(self.service_data) == 0 or self.service_data[0] != advertisementdata.service_data:
             self.service_data.insert(0, advertisementdata.service_data)
-            if advertisementdata.service_data not in self.manufacturer_data[1:]:
+            if advertisementdata.service_data not in self.service_data[1:]:
                 _want_name_update = True
             del self.service_data[HIST_KEEP_COUNT:]
 
