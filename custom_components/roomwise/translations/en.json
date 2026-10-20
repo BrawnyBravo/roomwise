@@ -25,6 +25,7 @@
       "some_active": "You have at least some active devices, this is good.",
       "no_scanners": "You need to configure some bluetooth scanners before Roomwise will have anything to work with. \nAny one of esphome bluetooth_proxy, Shelly bluetooth proxy or local bluetooth adaptor should get you started.",
       "no_devices": "No bluetooth devices are actively being reported from your scanners. \nYou will need to solve this before Roomwise can be of much help.",
+      "autotune_too_few_devices": "Please tick at least 3 devices that never move: with fewer, auto-tune cannot suggest any changes.",
       "autotune_too_many_devices": "Please tick at most 60 devices. Fewer, well-chosen devices (a few in each room with a receiver) work just as well.",
       "autotune_too_long": "That is too much listening for one run: devices x minutes must be 1200 or less (for example 40 devices for 30 minutes, or 60 devices for 20 minutes)."
     },

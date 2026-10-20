@@ -54,6 +54,8 @@
   the offsets it did change exactly as it scored them.
 - If Roomwise is reloaded while auto-tune is listening, the run now stops and says it failed, instead of carrying on
   with nothing to listen to and reporting every device as not heard.
+- Auto-tune now asks for at least 3 devices that never move before it starts listening, instead of telling you it
+  needed more after the whole listening time.
 
 ### Privacy
 

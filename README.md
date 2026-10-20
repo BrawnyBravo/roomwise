@@ -195,8 +195,8 @@ room than with your current settings (or as many, with fewer devices in proxy-le
 2. Go to **Settings, Devices & Services, Roomwise, Configure, Auto-tune rooms**.
 3. Tick devices that **never move**: smart plugs, light bulbs, TVs, speakers, appliances. Devices
    Home Assistant already knows the room of are pre-ticked. Do not tick phones, watches, tags, or
-   anything carried around. A few devices in each room with a proxy is ideal; up to 60 devices, and
-   devices x minutes up to 1200. Some fixed devices (those whose Bluetooth address looks like one that
+   anything carried around. A few devices in each room with a proxy is ideal; at least 3 and up to 60
+   devices, and devices x minutes up to 1200. Some fixed devices (those whose Bluetooth address looks like one that
    could change) only appear in the list after Roomwise has heard them steadily for about 20 minutes,
    for example right after a restart of Home Assistant. If one is missing, wait and open Auto-tune
    again.

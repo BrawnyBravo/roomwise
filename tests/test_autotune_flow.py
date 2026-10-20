@@ -61,6 +61,14 @@ def _discovery() -> Discovery:
     )
 
 
+# Three devices: auto-tune needs at least three that never move.
+_CANDIDATES = [
+    autotune_ha.Candidate("11:22:33:44:55:66", "Kettle", "kitchen", True),
+    autotune_ha.Candidate("11:22:33:44:55:77", "Lamp [11:22:33:44:55:77]", None, False),
+    autotune_ha.Candidate("11:22:33:44:55:88", "Clock", "office", True),
+]
+
+
 async def _start_autotune(hass: HomeAssistant, entry: MockConfigEntry, report_or_exc, export=False):
     seen = {}
 
@@ -70,10 +78,7 @@ async def _start_autotune(hass: HomeAssistant, entry: MockConfigEntry, report_or
             raise report_or_exc
         return report_or_exc
 
-    cands = [
-        autotune_ha.Candidate("11:22:33:44:55:66", "Kettle", "kitchen", True),
-        autotune_ha.Candidate("11:22:33:44:55:77", "Lamp [11:22:33:44:55:77]", None, False),
-    ]
+    cands = _CANDIDATES
     with (
         patch("custom_components.roomwise.autotune_flow.discover", return_value=_discovery()),
         patch("custom_components.roomwise.autotune_flow.candidates", return_value=cands),
@@ -87,12 +92,12 @@ async def _start_autotune(hass: HomeAssistant, entry: MockConfigEntry, report_or
         )
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "autotune"
-        assert result["description_placeholders"]["candidate_count"] == "2"
-        assert result["description_placeholders"]["suggested_count"] == "1"
+        assert result["description_placeholders"]["candidate_count"] == "3"
+        assert result["description_placeholders"]["suggested_count"] == "2"
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                "autotune_selected": ["11:22:33:44:55:66", "11:22:33:44:55:77"],
+                "autotune_selected": ["11:22:33:44:55:66", "11:22:33:44:55:77", "11:22:33:44:55:88"],
                 "autotune_minutes": 2,
                 "autotune_export": export,
             },
@@ -100,9 +105,9 @@ async def _start_autotune(hass: HomeAssistant, entry: MockConfigEntry, report_or
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "autotune_rooms"
         keys = [str(k) for k in result["data_schema"].schema]
-        assert keys == ["Kettle", "Lamp [11:22:33:44:55:77]"]
+        assert keys == ["Kettle", "Lamp [11:22:33:44:55:77]", "Clock"]
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], user_input={"Kettle": "kitchen", "Lamp [11:22:33:44:55:77]": "office"}
+            result["flow_id"], user_input={"Kettle": "kitchen", "Lamp [11:22:33:44:55:77]": "office", "Clock": "office"}
         )
         assert result["type"] == FlowResultType.SHOW_PROGRESS, result
         assert result["step_id"] == "autotune_collect"
@@ -112,6 +117,7 @@ async def _start_autotune(hass: HomeAssistant, entry: MockConfigEntry, report_or
     assert {lm.id: lm.area for lm in seen["landmarks"]} == {
         "11:22:33:44:55:66": "kitchen",
         "11:22:33:44:55:77": "office",
+        "11:22:33:44:55:88": "office",
     }
     assert (seen["export_path"] is not None) == export
     return result
@@ -133,6 +139,7 @@ async def test_autotune_apply_writes_offsets(hass: HomeAssistant, setup_bermuda_
     assert setup_bermuda_entry.options[autotune_ha.CONF_AUTOTUNE_LANDMARKS] == {
         "11:22:33:44:55:66": "kitchen",
         "11:22:33:44:55:77": "office",
+        "11:22:33:44:55:88": "office",
     }
 
 
@@ -454,3 +461,24 @@ async def test_unloading_roomwise_stops_a_running_autotune(hass: HomeAssistant, 
     assert await hass.config_entries.async_unload(setup_bermuda_entry.entry_id)
     await hass.async_block_till_done()
     assert task.cancelled()
+
+
+@pytest.mark.parametrize("ticked", [[], ["11:22:33:44:55:66"], ["11:22:33:44:55:66", "11:22:33:44:55:77"]])
+async def test_too_few_devices_is_refused_before_listening(
+    hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry, ticked
+):
+    with (
+        patch("custom_components.roomwise.autotune_flow.discover", return_value=_discovery()),
+        patch("custom_components.roomwise.autotune_flow.candidates", return_value=_CANDIDATES),
+    ):
+        result = await hass.config_entries.options.async_init(setup_bermuda_entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], user_input={"next_step_id": "autotune"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"autotune_selected": ticked, "autotune_minutes": 2, "autotune_export": False},
+        )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "autotune"
+    assert result["errors"] == {"base": "autotune_too_few_devices"}

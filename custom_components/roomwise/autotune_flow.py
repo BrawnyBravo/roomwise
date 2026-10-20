@@ -16,7 +16,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 
-from .autotune import Landmark, format_table
+from .autotune import DEFAULT_MIN_LANDMARKS, Landmark, format_table
 from .autotune_ha import (
     CONF_AUTOTUNE_LANDMARKS,
     DEFAULT_AUTOTUNE_MINUTES,
@@ -66,7 +66,11 @@ class AutotuneOptionsMixin:
             minutes = float(user_input[CONF_AUTOTUNE_MINUTES])
             selected = [a.lower() for a in user_input.get(CONF_AUTOTUNE_SELECTED, [])]
             # Bound the work: memory for the readings and CPU for the fair test.
-            if len(selected) > MAX_AUTOTUNE_LANDMARKS:
+            if len(selected) < DEFAULT_MIN_LANDMARKS:
+                # The tuner cannot suggest anything with fewer; say so now rather
+                # than after the whole listening time.
+                errors["base"] = "autotune_too_few_devices"
+            elif len(selected) > MAX_AUTOTUNE_LANDMARKS:
                 errors["base"] = "autotune_too_many_devices"
             elif len(selected) * minutes > MAX_AUTOTUNE_DEVICE_MINUTES:
                 errors["base"] = "autotune_too_long"
