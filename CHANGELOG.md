@@ -10,6 +10,11 @@
 - If an update cycle ever fails, Roomwise no longer retries it on every Bluetooth advert (often hundreds a second),
   which could tie up a processor core and flood the log. It now retries at most once every couple of seconds and
   logs the error once.
+- An iBeacon that changes its identity (major/minor, for example a beacon with a "movement" mode) now follows its
+  newest identity. Before, it stayed on the oldest one it had sent recently, so the beacon you track showed as away
+  while an old identity kept a location.
+- Apple frames too short to be an iBeacon no longer create a shared, nameless beacon that merged unrelated devices,
+  and devices that alternate an iBeacon with another payload are no longer re-matched on every packet.
 
 ## 0.1.2 (2026-10-15)
 

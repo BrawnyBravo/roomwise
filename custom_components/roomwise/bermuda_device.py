@@ -828,51 +828,54 @@ class BermudaDevice(dict):
             self.make_name()
 
         # ==== Check manfuacturer data (type 0xFF)
-        for manudict in advert.manufacturer_data:
+        # Only the newest frame is looked at: the history (newest first) holds frames
+        # that were each processed when they arrived. Walking the whole history used
+        # to leave a beacon that changed its major/minor on its OLDEST identity.
+        for manudict in advert.manufacturer_data[:1]:
             for company_code, man_data in manudict.items():
                 name, generic = self._coordinator.get_manufacturer_from_id(company_code)
                 if name and (self.manufacturer is None or not generic):
                     self.manufacturer = name
 
-                if company_code == 0x004C:  # 76 Apple Inc
-                    if man_data[:1] == b"\x02":  # iBeacon: Almost always 0x0215, but 0x15 is the length part
-                        # iBeacon / UUID Support
+                # 76 is Apple Inc. iBeacon is almost always 0x0215, but 0x15 is the length part.
+                # Bermuda supports iBeacons by creating a "metadevice", which
+                # looks just like any other Bermuda device, but its address is
+                # the iBeacon full uuid_maj_min and it has helpers that gather
+                # together the advertisements from a set of source_devices - this
+                # device instance is about to become just such a metadevice.source_device
+                #
+                # A frame needs 22 bytes to hold uuid, major and minor. At least one
+                # iBeacon out there sends exactly 22 (no tx_power field, see #466), so
+                # power is optional; anything shorter is not a usable iBeacon.
+                if company_code == 0x004C and man_data[:1] == b"\x02" and len(man_data) >= 22:
+                    self._apply_ibeacon_frame(man_data)
 
-                        # Bermuda supports iBeacons by creating a "metadevice", which
-                        # looks just like any other Bermuda device, but its address is
-                        # the iBeacon full uuid_maj_min and it has helpers that gather
-                        # together the advertisements from a set of source_devices - this
-                        # device instance is about to become just such a metadevice.source_device
+    def _apply_ibeacon_frame(self, man_data: bytes) -> None:
+        """Take this device's iBeacon identity from a (validated) iBeacon frame."""
+        old_unique_id = self.beacon_unique_id
+        self.metadevice_type.add(METADEVICE_TYPE_IBEACON_SOURCE)
+        self.beacon_uuid = man_data[2:18].hex().lower()
+        self.beacon_major = str(int.from_bytes(man_data[18:20], byteorder="big"))
+        self.beacon_minor = str(int.from_bytes(man_data[20:22], byteorder="big"))
+        self.beacon_power = int.from_bytes(man_data[22:23], signed=True) if len(man_data) >= 23 else None
 
-                        # At least one(!) iBeacon out there sends only 22 bytes (it has no tx_power field)
-                        # which is weird. So Let's just decode what we can that exists, and blindly proceed
-                        # otherwise. We could reject it, but it can still be useful, so...
-                        if len(man_data) >= 22:
-                            # Proper iBeacon packet has 23 bytes.
-                            self.metadevice_type.add(METADEVICE_TYPE_IBEACON_SOURCE)
-                            self.beacon_uuid = man_data[2:18].hex().lower()
-                            self.beacon_major = str(int.from_bytes(man_data[18:20], byteorder="big"))
-                            self.beacon_minor = str(int.from_bytes(man_data[20:22], byteorder="big"))
-                        if len(man_data) >= 23:
-                            # There really is at least one out there that lacks this! See #466
-                            self.beacon_power = int.from_bytes([man_data[22]], signed=True)
+        # The irony of adding major/minor is that the
+        # UniversallyUniqueIDentifier is not even unique
+        # locally, so we need to make one :-)
+        self.beacon_unique_id = f"{self.beacon_uuid}_{self.beacon_major}_{self.beacon_minor}"
 
-                        # The irony of adding major/minor is that the
-                        # UniversallyUniqueIDentifier is not even unique
-                        # locally, so we need to make one :-)
-
-                        self.beacon_unique_id = f"{self.beacon_uuid}_{self.beacon_major}_{self.beacon_minor}"
-                        # Note: it's possible that a device sends multiple
-                        # beacons. We are only going to process the latest
-                        # one in any single update cycle, so we ignore that
-                        # possibility for now. Given we re-process completely
-                        # each cycle it should *just work*, for the most part.
-
-                        # Create a metadevice for this beacon. Metadevices get updated
-                        # after all adverts are processed and distances etc are calculated
-                        # for the sources.
-                        self.make_name()
-                        self._coordinator.register_ibeacon_source(self)
+        # Create (or join) the metadevice for this beacon. Metadevices get updated
+        # after all adverts are processed and distances etc are calculated for the
+        # sources. Skip it when nothing changed: a device alternating an iBeacon
+        # frame with another frame would otherwise re-register on every packet.
+        metadevice = self._coordinator.metadevices.get(self.beacon_unique_id)
+        if (
+            self.beacon_unique_id != old_unique_id
+            or metadevice is None
+            or self.address not in metadevice.metadevice_sources
+        ):
+            self.make_name()
+            self._coordinator.register_ibeacon_source(self)
 
     def to_dict(self):
         """Convert class to serialisable dict for dump_devices."""

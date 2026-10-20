@@ -251,13 +251,21 @@ class BermudaAdvert(dict):
                     _want_name_update = True
 
         if len(self.manufacturer_data) == 0 or self.manufacturer_data[0] != advertisementdata.manufacturer_data:
+            # Devices that alternate two payloads (an iBeacon frame and another,
+            # say) differ from the newest entry on every packet. Keep each distinct
+            # frame once, moving a repeat to the front, so the history stays useful.
+            seen_recently = advertisementdata.manufacturer_data in self.manufacturer_data
+            if seen_recently:
+                self.manufacturer_data.remove(advertisementdata.manufacturer_data)
             self.manufacturer_data.insert(0, advertisementdata.manufacturer_data)
+            del self.manufacturer_data[HIST_KEEP_COUNT:]
 
             # If manufacturing data changes, we call the update. This is because iBeacons might change their
-            # sent details, in which case we need to re-match them.
+            # sent details, in which case we need to re-match them. It only parses the newest frame and
+            # only re-registers a beacon whose identity actually changed, so this is cheap.
             self._device.process_manufacturer_data(self)
-            _want_name_update = True
-            del self.manufacturer_data[HIST_KEEP_COUNT:]
+            if not seen_recently:
+                _want_name_update = True
 
         if len(self.service_data) == 0 or self.service_data[0] != advertisementdata.service_data:
             self.service_data.insert(0, advertisementdata.service_data)
