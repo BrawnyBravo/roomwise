@@ -28,6 +28,10 @@
   it no longer comes back with all its entities after the next restart. Private BLE devices (phones and watches)
   are tracked automatically, so the delete button now says no and the log explains to remove them in the Private
   BLE Device integration instead.
+- Calibration 2 (per-proxy offsets): two proxies with the same name now get a line each (with a shortened address)
+  and can be set separately. Saving no longer fails with "Unknown error" when a proxy appeared or was renamed while
+  the form was open or a line was deleted (that proxy keeps its saved offset), and a value that is not a number
+  shows a clear error instead.
 
 ### Privacy
 

@@ -484,11 +484,24 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
         """
         if user_input is not None:
             if user_input[CONF_SAVE_AND_CLOSE]:
-                # Convert the name-based dict to use MAC addresses
+                # Convert the label-based dict to use MAC addresses. A scanner whose
+                # label is missing (it appeared or was renamed since the form was
+                # shown, or its line was deleted in the editor) keeps its saved offset.
+                saved_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
+                edited = user_input[CONF_SCANNER_INFO] if isinstance(user_input[CONF_SCANNER_INFO], dict) else {}
                 rssi_offset_by_address = {}
-                for address in self.coordinator.scanner_list:
-                    scanner_name = self.coordinator.devices[address].name
-                    val = user_input[CONF_SCANNER_INFO][scanner_name]
+                for address, label in self._scanner_labels().items():
+                    try:
+                        val = float(edited.get(label, saved_offsets.get(address, 0)))
+                    except (TypeError, ValueError):
+                        self._last_scanner_info = user_input[CONF_SCANNER_INFO]
+                        self._last_device = user_input[CONF_DEVICES]
+                        return self.async_show_form(
+                            step_id="calibration2_scanners",
+                            data_schema=vol.Schema(self._calibration2_schema()),
+                            errors={"base": "invalid_offset"},
+                            description_placeholders={"suffix": ""},
+                        )
                     # Clip to keep in sensible range, fixes #497
                     rssi_offset_by_address[address] = max(min(val, 127), -127)
 
@@ -509,24 +522,7 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             self._last_scanner_info = user_input[CONF_SCANNER_INFO]
             self._last_device = user_input[CONF_DEVICES]
 
-        saved_rssi_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
-        rssi_offset_dict = {}
-
-        # Sorted by name so the list is stable and a given scanner is easy to find.
-        for scanner in self._scanner_addresses_by_name():
-            scanner_name = self.coordinator.devices[scanner].name
-            rssi_offset_dict[scanner_name] = saved_rssi_offsets.get(scanner, 0)
-        data_schema = {
-            vol.Required(
-                CONF_DEVICES,
-                default=self._last_device if self._last_device is not None else vol.UNDEFINED,
-            ): DeviceSelector(DeviceSelectorConfig(integration=DOMAIN)),
-            vol.Required(
-                CONF_SCANNER_INFO,
-                default=rssi_offset_dict if not self._last_scanner_info else self._last_scanner_info,
-            ): ObjectSelector(),
-            vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
-        }
+        data_schema = self._calibration2_schema()
         if user_input is None:
             return self.async_show_form(
                 step_id="calibration2_scanners",
@@ -539,9 +535,11 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
         if device is not None and isinstance(self._last_scanner_info, dict):
             results = {}
             # Gather new estimates for distances using rssi hist and the new offset.
-            for scanner in self._scanner_addresses_by_name():
-                scanner_name = self.coordinator.devices[scanner].name
-                cur_offset = self._last_scanner_info.get(scanner_name, 0)
+            for scanner, scanner_name in self._scanner_labels().items():
+                try:
+                    cur_offset = float(self._last_scanner_info.get(scanner_name, 0))
+                except (TypeError, ValueError):
+                    cur_offset = 0
                 if (scanneradvert := device.get_scanner(scanner)) is not None:
                     results[scanner_name] = [
                         rssi_to_metres(
@@ -572,6 +570,38 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             data_schema=vol.Schema(data_schema),
             description_placeholders={"suffix": results_str},
         )
+
+    def _calibration2_schema(self) -> dict:
+        """The calibration 2 form: device picker and the editable per-scanner offsets."""
+        saved_rssi_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
+        rssi_offset_dict = {
+            label: saved_rssi_offsets.get(scanner, 0) for scanner, label in self._scanner_labels().items()
+        }
+        return {
+            vol.Required(
+                CONF_DEVICES,
+                default=self._last_device if self._last_device is not None else vol.UNDEFINED,
+            ): DeviceSelector(DeviceSelectorConfig(integration=DOMAIN)),
+            vol.Required(
+                CONF_SCANNER_INFO,
+                default=rssi_offset_dict if not self._last_scanner_info else self._last_scanner_info,
+            ): ObjectSelector(),
+            vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
+        }
+
+    def _scanner_labels(self) -> dict[str, str]:
+        """
+        Scanner address -> the label it is edited under, sorted by name.
+
+        The label is the scanner's name, unless two scanners share a name: then
+        each gets a shortened address too, so their offsets can be set apart.
+        """
+        addresses = self._scanner_addresses_by_name()
+        names = [str(self.coordinator.devices[address].name) for address in addresses]
+        return {
+            address: name if names.count(name) == 1 else f"{name} [{mac_redact(address)}]"
+            for address, name in zip(addresses, names, strict=True)
+        }
 
     def _scanner_addresses_by_name(self) -> list[str]:
         """Return the scanner addresses, sorted (case-insensitively) by scanner name."""
