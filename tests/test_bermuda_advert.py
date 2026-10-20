@@ -65,7 +65,6 @@ def bermuda_advert(mock_parent_device, mock_advertisement_data, mock_scanner_dev
         options=options,
         scanner_device=mock_scanner_device,
     )
-    ba.name = "foo name"
     return ba
 
 

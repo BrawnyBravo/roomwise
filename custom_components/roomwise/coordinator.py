@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, cast
 import voluptuous as vol
 import yaml
 from bluetooth_data_tools import monotonic_time_coarse
-from habluetooth import BaseHaScanner
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.api import _get_manager
 from homeassistant.const import MAJOR_VERSION as HA_VERSION_MAJ
@@ -99,7 +98,7 @@ from .const import (
 from .util import mac_explode_formats, mac_norm, redact_addresses, snapshot_data
 
 if TYPE_CHECKING:
-    from habluetooth import BluetoothServiceInfoBleak
+    from habluetooth import BaseHaScanner, BluetoothServiceInfoBleak
     from homeassistant.components.bluetooth import (
         BluetoothChange,
     )
@@ -744,6 +743,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialise ha_scanners if we haven't already
         if self._scanner_init_pending:
             self._refresh_scanners(force=True)
+            self._scanner_init_pending = False
 
         for ha_scanner in self._hascanners:
             # Create / Get the BermudaDevice for this scanner
@@ -1588,18 +1588,22 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
           - force=True or
           - self._force_full_scanner_init=True
         """
-        _new_ha_scanners = set[BaseHaScanner]
         # Using new API in 2025.2
-        _new_ha_scanners = set(self._manager.async_current_scanners())
+        _new_ha_scanners: set[BaseHaScanner] = set(self._manager.async_current_scanners())
 
-        if _new_ha_scanners is self._hascanners or _new_ha_scanners == self._hascanners:
-            # No changes.
+        _changed = not (_new_ha_scanners is self._hascanners or _new_ha_scanners == self._hascanners)
+        if not _changed and not force:
+            # No changes, and nobody asked for a re-read.
             return
 
-        _LOGGER.debug("HA Base Scanner Set has changed, rebuilding.")
-        self._hascanners = _new_ha_scanners
-
-        self._async_purge_removed_scanners()
+        if _changed:
+            _LOGGER.debug("HA Base Scanner Set has changed, rebuilding.")
+            self._hascanners = _new_ha_scanners
+            self._async_purge_removed_scanners()
+        else:
+            # Same scanners, but something about one of them (its room, its name)
+            # may have changed in the device registry: re-read them all.
+            _LOGGER.debug("Re-reading scanner details from the device registry.")
 
         # So we can raise a single repair listing all area-less scanners:
         _scanners_without_areas: list[str] = []
@@ -1610,7 +1614,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         for hascanner in self._hascanners:
             scanner_address = mac_norm(hascanner.source)
             bermuda_scanner = self._get_or_create_device(scanner_address)
-            bermuda_scanner.async_as_scanner_init(hascanner)
+            bermuda_scanner.async_as_scanner_init(hascanner, force=force)
 
             if bermuda_scanner.area_id is None:
                 _scanners_without_areas.append(f"{bermuda_scanner.name} [{bermuda_scanner.address}]")

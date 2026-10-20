@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Putting a proxy in a room, moving it to another room or renaming it in Home Assistant now takes effect straight
+  away. Before, Roomwise kept using the old room and name until Home Assistant restarted, so the "proxies without a
+  room" repair stayed up and nobody was placed in the newly assigned room.
+
 ## 0.1.2 (2026-10-15)
 
 ### Added
