@@ -1569,7 +1569,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
         _superchatty = False
 
-        if device.area_advert != incumbent and tests.reason is not None:
+        if device.area_advert is not incumbent and tests.reason is not None:
             device.diag_area_switch = tests.sensortext()
 
         # Apply the newly-found closest scanner (or apply None if we didn't find one)

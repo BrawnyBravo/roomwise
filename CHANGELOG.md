@@ -22,6 +22,8 @@
   interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
 - `dump_devices` with `configured_devices` now includes Private BLE devices (phones and watches) and their current
   addresses; before, it matched them by the wrong key and left them out.
+- The "area switch" diagnostic is recorded again when a device moves from one receiver to another (it was only
+  updated when a device became placed or unplaced).
 
 ### Privacy
 

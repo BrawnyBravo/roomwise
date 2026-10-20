@@ -77,7 +77,7 @@ def _better_scanner_match(candidate: DeviceEntry, current: DeviceEntry | None) -
     return rank(candidate) >= rank(current)
 
 
-class BermudaDevice(dict):
+class BermudaDevice:
     """
     This class is to represent a single bluetooth "device" tracked by Bermuda.
 
