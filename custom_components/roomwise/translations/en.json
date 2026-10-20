@@ -14,7 +14,8 @@
       "auth": "Username/Password is wrong."
     },
     "abort": {
-      "single_instance_allowed": "Only a single instance is allowed."
+      "single_instance_allowed": "Only a single instance is allowed.",
+      "already_configured": "Roomwise is already set up."
     }
   },
   "options": {
@@ -143,6 +144,11 @@
       },
       "area": {
         "name": "Area"
+      }
+    },
+    "number": {
+      "ref_power": {
+        "name": "Calibration Ref Power at 1m. 0 for default."
       }
     }
   },
