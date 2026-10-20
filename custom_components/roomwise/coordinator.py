@@ -1782,8 +1782,9 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     for altmac in mac_explode_formats(address):
                         self.redactions[altmac] = f"{address[:2]}::CFG_MAC_{i}::{address[-2:]}"
                 else:
-                    # Don't know what it is, but not a mac.
-                    self.redactions[address] = f"CFG_OTHER_{1}_{address}"
+                    # Don't know what it is, but not a mac. The placeholder must not
+                    # contain the value itself (it could be an IRK).
+                    self.redactions[address] = f"CFG_OTHER_{i}"
         _LOGGER.debug("Redact confdevs: %ss, %d items", monotonic_time_coarse() - _stamp, len(self.redactions))
         # EVERYTHING ELSE
         for non_lower_address, device in self.devices.items():
@@ -1801,8 +1802,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     for altmac in mac_explode_formats(address):
                         self.redactions[altmac] = f"{address[:2]}::OTHER_MAC_{i}::{address[-2:]}"
                 else:
-                    # Don't know what it is.
-                    self.redactions[address] = f"OTHER_{i}_{address}"
+                    # Don't know what it is. The placeholder must not contain it.
+                    self.redactions[address] = f"OTHER_{i}"
         _LOGGER.debug("Redact therest: %ss, %d items", monotonic_time_coarse() - _stamp, len(self.redactions))
         _elapsed = monotonic_time_coarse() - _stamp
         if _elapsed > 0.5:

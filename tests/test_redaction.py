@@ -280,3 +280,16 @@ async def test_diagnostics_with_bluetooth_advert_history(hass: HomeAssistant, by
     text = repr(diag).lower()
     assert KNOWN_A not in text
     assert KNOWN_A.replace(":", "") not in text
+
+
+def test_placeholders_for_unrecognised_ids_do_not_contain_them():
+    """An id that is neither a MAC nor an iBeacon (an IRK saved as a configured device, say) is fully hidden."""
+    irk = "5eedc0de0123456789abcdef01234567"  # made-up test key
+    odd = "some-odd-id"
+    stub = _redactor(devices=[odd], configured=[irk, "another-odd-id"])
+    out = _redact(stub, {"configured": [irk, "another-odd-id"], "device": odd})
+    text = repr(out).lower()
+    for value in (irk, "another-odd-id", odd):
+        assert value not in text
+    # Each value gets its own placeholder.
+    assert out["configured"][0] != out["configured"][1]

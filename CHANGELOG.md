@@ -31,6 +31,8 @@
   redacted by default. Before, any signed-in user (or any long-lived token) could get every device's Bluetooth
   address and the identity keys of everyone's phones. Pass `redact: false` to get the raw output for your own
   troubleshooting.
+- Redacted output (diagnostics and `dump_devices`) no longer includes the original value inside the placeholder for
+  ids that are neither a Bluetooth address nor an iBeacon, such as an identity key saved as a configured device.
 
 ## 0.1.2 (2026-10-15)
 
