@@ -55,7 +55,7 @@ from .const import (
     DOMAIN_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_PRIVATE_BLE_SOURCE,
 )
-from .util import mac_math_offset, name_is_address
+from .util import mac_math_offset, name_is_address, sanitize_options
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -303,13 +303,15 @@ def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> 
 
 def current_settings(options: dict, scanner_ids: list[str]) -> Settings:
     """Read the live calibration from the options, the same way the coordinator does."""
+    options = dict(options)
+    sanitize_options(options)  # an out-of-range saved value would crash the tuner's maths
     offsets = options.get(CONF_RSSI_OFFSETS, {}) or {}
     return Settings(
         ref_power=float(options.get(CONF_REF_POWER, DEFAULT_REF_POWER)),
         attenuation=float(options.get(CONF_ATTENUATION, DEFAULT_ATTENUATION)),
         max_radius=float(options.get(CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS)),
         offsets={sid: offsets.get(sid, 0) for sid in scanner_ids},
-        radii={sid: float(r) for sid, r in (options.get(CONF_SCANNER_MAX_RADIUS, {}) or {}).items()},
+        radii={sid: float(r) for sid, r in (options.get(CONF_SCANNER_MAX_RADIUS, {}) or {}).items() if float(r) > 0},
     )
 
 
@@ -317,7 +319,10 @@ def settings_to_options(report: TuneReport, options: dict) -> dict:
     """The option values to save, in the same shape manual calibration saves them."""
     new = dict(options.get(CONF_RSSI_OFFSETS, {}) or {})
     for sid, value in report.proposed.offsets.items():
-        new[sid] = max(min(round(value), 127), -127)  # same clip as calibration2 (#497)
+        if value == report.current.offset(sid):
+            continue  # not changed by the tuner: keep the saved value exactly as it is
+        # Saved as scored (no rounding), clipped like calibration2 (#497).
+        new[sid] = max(min(value, 127), -127)
     out = {CONF_RSSI_OFFSETS: new}
     if report.proposed.radii or options.get(CONF_SCANNER_MAX_RADIUS):
         out[CONF_SCANNER_MAX_RADIUS] = dict(report.proposed.radii)

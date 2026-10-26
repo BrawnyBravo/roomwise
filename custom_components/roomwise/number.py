@@ -71,7 +71,6 @@ class BermudaNumber(BermudaEntity, RestoreNumber):
 
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_name = "Calibration Ref Power at 1m. 0 for default."
     _attr_translation_key = "ref_power"
     _attr_device_class = NumberDeviceClass.SIGNAL_STRENGTH
     _attr_entity_category = EntityCategory.CONFIG

@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 # ruff: noqa: PLR1730
 
 
-class BermudaAdvert(dict):
+class BermudaAdvert:
     """
     Represents details from a scanner relevant to a specific device.
 
@@ -108,14 +108,29 @@ class BermudaAdvert(dict):
         self.update_advertisement(advertisementdata, self.scanner_device)
 
     def apply_new_scanner(self, scanner_device: BermudaDevice):
-        self.name: str = scanner_device.name  # or scandata.scanner.name
         self.scanner_device = scanner_device  # links to the source device
         if self.scanner_address != scanner_device.address:
             _LOGGER.error("Advert %s received new scanner with wrong address %s", self.__repr__(), scanner_device)
-        self.area_id: str | None = scanner_device.area_id
-        self.area_name: str | None = scanner_device.area_name
         # Only remote scanners log timestamps, local usb adaptors do not.
         self.scanner_sends_stamps = scanner_device.is_remote_scanner
+
+    # The receiver's name and room are read from the receiver each time rather than
+    # copied when the advert is first heard, so moving or renaming a proxy in Home
+    # Assistant takes effect for devices it is already hearing.
+    @property
+    def name(self) -> str:
+        """Name of the receiver that heard this advert."""
+        return self.scanner_device.name
+
+    @property
+    def area_id(self) -> str | None:
+        """Room of the receiver that heard this advert."""
+        return self.scanner_device.area_id
+
+    @property
+    def area_name(self) -> str | None:
+        """Room name of the receiver that heard this advert."""
+        return self.scanner_device.area_name
 
     def update_advertisement(self, advertisementdata: AdvertisementData, scanner_device: BermudaDevice):
         """
@@ -194,7 +209,7 @@ class BermudaAdvert(dict):
             # of the true inter-packet interval. For stamps from local bluetooth
             # adaptors (usb dongles) it reflects "Which update cycle last saw a
             # different rssi", which will be a multiple of our update interval.
-            if new_stamp is not None and self.stamp is not None:
+            if new_stamp is not None and self.stamp:  # stamp starts at 0, not None
                 _interval = new_stamp - self.stamp
             else:
                 _interval = None
@@ -236,17 +251,25 @@ class BermudaAdvert(dict):
                     _want_name_update = True
 
         if len(self.manufacturer_data) == 0 or self.manufacturer_data[0] != advertisementdata.manufacturer_data:
+            # Devices that alternate two payloads (an iBeacon frame and another,
+            # say) differ from the newest entry on every packet. Keep each distinct
+            # frame once, moving a repeat to the front, so the history stays useful.
+            seen_recently = advertisementdata.manufacturer_data in self.manufacturer_data
+            if seen_recently:
+                self.manufacturer_data.remove(advertisementdata.manufacturer_data)
             self.manufacturer_data.insert(0, advertisementdata.manufacturer_data)
+            del self.manufacturer_data[HIST_KEEP_COUNT:]
 
             # If manufacturing data changes, we call the update. This is because iBeacons might change their
-            # sent details, in which case we need to re-match them.
+            # sent details, in which case we need to re-match them. It only parses the newest frame and
+            # only re-registers a beacon whose identity actually changed, so this is cheap.
             self._device.process_manufacturer_data(self)
-            _want_name_update = True
-            del self.manufacturer_data[HIST_KEEP_COUNT:]
+            if not seen_recently:
+                _want_name_update = True
 
         if len(self.service_data) == 0 or self.service_data[0] != advertisementdata.service_data:
             self.service_data.insert(0, advertisementdata.service_data)
-            if advertisementdata.service_data not in self.manufacturer_data[1:]:
+            if advertisementdata.service_data not in self.service_data[1:]:
                 _want_name_update = True
             del self.service_data[HIST_KEEP_COUNT:]
 
@@ -496,7 +519,7 @@ class BermudaAdvert(dict):
         """Convert class to serialisable dict for dump_devices."""
         # using "is" comparisons instead of string matching means
         # linting and typing can catch errors.
-        out = {}
+        out = {"name": self.name, "area_id": self.area_id, "area_name": self.area_name}
         for var, val in vars(self).items():
             if val == self.options:
                 # skip certain vars that we don't want in the dump output.

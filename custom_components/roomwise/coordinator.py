@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, cast
 import voluptuous as vol
 import yaml
 from bluetooth_data_tools import monotonic_time_coarse
-from habluetooth import BaseHaScanner
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.api import _get_manager
 from homeassistant.const import MAJOR_VERSION as HA_VERSION_MAJ
@@ -48,6 +47,7 @@ from homeassistant.helpers.device_registry import (
     EventDeviceRegistryUpdatedData,
 )
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.dt import get_age, now
 
@@ -96,10 +96,12 @@ from .const import (
     SIGNAL_SCANNERS_CHANGED,
     UPDATE_INTERVAL,
 )
-from .util import mac_explode_formats, mac_norm, redact_addresses, snapshot_data
+from .util import mac_explode_formats, mac_norm, redact_addresses, sanitize_options, snapshot_data
+
+MANUFACTURER_ID_DIR = Path(__file__).parent / "manufacturer_identification"
 
 if TYPE_CHECKING:
-    from habluetooth import BluetoothServiceInfoBleak
+    from habluetooth import BaseHaScanner, BluetoothServiceInfoBleak
     from homeassistant.components.bluetooth import (
         BluetoothChange,
     )
@@ -121,7 +123,7 @@ Cancellable = Callable[[], None]
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
-def _load_manufacturer_ids(member_path: str, company_path: str) -> tuple[dict[int, str], dict[int, str]]:
+def _load_manufacturer_ids(member_path: str | Path, company_path: str | Path) -> tuple[dict[int, str], dict[int, str]]:
     """Read the Bluetooth SIG name tables. Blocking: run in the executor."""
     with Path(member_path).open(encoding="utf-8") as f:
         mi_yaml = yaml.load(f, Loader=YAML_LOADER)["uuids"]  # noqa: S506 - safe loader
@@ -178,6 +180,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.update_in_progress: bool = False  # A lock to guard against huge backlogs / slow processing
         self.stamp_last_update: float = 0  # Last time we ran an update, from monotonic_time_coarse()
         self.stamp_last_update_started: float = 0
+        # When an advert last triggered an update attempt (see async_handle_advert).
+        self._stamp_last_advert_update_attempt: float = 0
         self.stamp_last_prune: float = 0  # When we last pruned device list
 
         self.member_uuids = {}
@@ -200,7 +204,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self._hascanner_timestamps: dict[str, dict[str, float]] = {}  # scanner_address, device_address, stamp
         self._scanner_list: set[str] = set()
         self._scanners: set[BermudaDevice] = set()  # Set of all in self.devices that is_scanner=True
-        self.irk_manager = BermudaIrkManager()
+        self.irk_manager = BermudaIrkManager(in_use=self._irk_addresses_in_use)
 
         self.ar = ar.async_get(self.hass)
         self.er = er.async_get(self.hass)
@@ -246,6 +250,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.config_entry.async_on_unload(
             self.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, self.handle_devreg_changes)
         )
+        # Rooms and floors: a renamed room, a room moved to a floor, or the first
+        # floor being added must not need a restart to show up.
+        for _event in (ar.EVENT_AREA_REGISTRY_UPDATED, fr.EVENT_FLOOR_REGISTRY_UPDATED):
+            self.config_entry.async_on_unload(self.hass.bus.async_listen(_event, self.handle_area_floor_changes))
 
         self.options = {}
 
@@ -279,11 +287,23 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 ):
                     self.options[key] = val
 
+        # A saved value out of range (attenuation 0 divides by zero on every advert)
+        # falls back to the default rather than taking the update loop down.
+        if fixed := sanitize_options(self.options):
+            _LOGGER.warning(
+                "Ignoring out-of-range Roomwise option(s) %s and using the default; "
+                "set a valid value under Configure > Global Options",
+                ", ".join(fixed),
+            )
+
         self.devices: dict[str, BermudaDevice] = {}
         # self.updaters: dict[str, BermudaPBDUCoordinator] = {}
 
-        # Register the dump_devices service
-        hass.services.async_register(
+        # Register the dump_devices service. Admin only: even redacted, the dump
+        # describes every device in the home and which room it is in, and
+        # unredacted it holds addresses and the identity keys (IRKs) of phones.
+        async_register_admin_service(
+            hass,
             DOMAIN,
             "dump_devices",
             self.service_dump_devices,
@@ -315,6 +335,15 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
     @property
     def get_scanners(self) -> set[BermudaDevice]:
         return self._scanners
+
+    def _irk_addresses_in_use(self) -> list[str]:
+        """Resolvable private addresses heard recently: the IRK cache keeps these."""
+        stamp = monotonic_time_coarse() - PRUNE_TIME_KNOWN_IRK
+        return [
+            address
+            for address, device in self.devices.items()
+            if device.address_type == BDADDR_TYPE_RANDOM_RESOLVABLE and device.last_seen > stamp
+        ]
 
     def init_floors(self) -> bool:
         """Check if the system has floors configured, and enable sensors."""
@@ -392,14 +421,12 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_load_manufacturer_ids(self):
         """Import yaml files containing manufacturer name mappings."""
         try:
+            # Next to this file, wherever the integration is installed (not
+            # assumed to be under the config folder's custom_components).
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/uuids/member_uuids.yaml
-            member_path = self.hass.config.path(
-                f"custom_components/{DOMAIN}/manufacturer_identification/member_uuids.yaml"
-            )
+            member_path = MANUFACTURER_ID_DIR / "member_uuids.yaml"
             # https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/company_identifiers/company_identifiers.yaml
-            company_path = self.hass.config.path(
-                f"custom_components/{DOMAIN}/manufacturer_identification/company_identifiers.yaml"
-            )
+            company_path = MANUFACTURER_ID_DIR / "company_identifiers.yaml"
             # Reading and parsing ~200 KB of YAML blocks for a noticeable time, so
             # it runs in the executor rather than on the event loop.
             self.member_uuids, self.company_uuids = await self.hass.async_add_executor_job(
@@ -408,6 +435,12 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         finally:
             # Ensure that an issue reading these files (which are optional, really) doesn't stop the whole show.
             self._waitingfor_load_manufacturer_ids = False
+
+    @callback
+    def handle_area_floor_changes(self, _ev: Event) -> None:
+        """Re-check for floors and re-read the scanners' rooms after an area or floor change."""
+        self.have_floors = self.init_floors()
+        self._scanner_init_pending = True
 
     @callback
     def handle_devreg_changes(self, ev: Event[EventDeviceRegistryUpdatedData]):
@@ -532,8 +565,23 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # If there are no active entities created after Bermuda's
         # initial setup, then no updates will be triggered on the co-ordinator.
         # So let's check if we haven't updated recently, and do so...
-        if self.stamp_last_update < monotonic_time_coarse() - (UPDATE_INTERVAL * 2):
-            self._async_update_data_internal()
+        #
+        # The attempt is stamped *before* running: stamp_last_update only moves
+        # on success, so after a failing cycle every advert from every device
+        # (often hundreds a second) would otherwise run the whole update again,
+        # fail again and hand the traceback to the Bluetooth stack each time.
+        nowstamp = monotonic_time_coarse()
+        cutoff = nowstamp - (UPDATE_INTERVAL * 2)
+        if self.stamp_last_update < cutoff and self._stamp_last_advert_update_attempt < cutoff:
+            self._stamp_last_advert_update_attempt = nowstamp
+            try:
+                self._async_update_data_internal()
+            except Exception:  # noqa: BLE001 - must not escape into the Bluetooth callback
+                _LOGGER_SPAM_LESS.error(
+                    "advert_update_failed",
+                    "Roomwise update triggered by a Bluetooth advert failed",
+                    exc_info=True,
+                )
 
     def _check_all_platforms_created(self, address):
         """Checks if all platforms have finished loading a device's entities."""
@@ -719,7 +767,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             for address, device in self.devices.items():
                 if device.create_sensor:
                     if not device.create_all_done:
-                        _LOGGER.debug("Firing device_new for %s (%s)", device.name, address)
+                        _LOGGER.debug("Firing device_new for %s", device.__repr__())
                         # Note that the below should be OK thread-wise, debugger indicates this is being
                         # called by _run in events.py, so pretty sure we are "in the event loop".
                         async_dispatcher_send(self.hass, SIGNAL_DEVICE_NEW, address)
@@ -744,6 +792,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # Initialise ha_scanners if we haven't already
         if self._scanner_init_pending:
             self._refresh_scanners(force=True)
+            self._scanner_init_pending = False
 
         for ha_scanner in self._hascanners:
             # Create / Get the BermudaDevice for this scanner
@@ -806,7 +855,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             self.redactions.clear()
             self.stamp_redactions_expiry = None
 
-        # Prune any IRK MACs that have expired
+        # Prune any IRK MACs that have expired (keeping the ones still being heard,
+        # see _irk_addresses_in_use).
         self.irk_manager.async_prune()
 
         # Prune devices.
@@ -1226,36 +1276,14 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 if source_device.ref_power != metadevice.ref_power:
                     source_device.set_ref_power(metadevice.ref_power)
 
-                # anything that isn't already set to something interesting, overwrite
-                # it with the new device's data.
-                for key, val in source_device.items():
-                    if val is any(
-                        [
-                            source_device.name_bt_local_name,
-                            source_device.name_bt_serviceinfo,
-                            source_device.manufacturer,
-                        ]
-                    ) and metadevice[key] in [None, False]:
-                        metadevice[key] = val
+                # Fill in names and manufacturer the metadevice does not have yet from
+                # the source. (Beacon identity fields are deliberately not copied: an
+                # iBeacon metadevice's are its identity, and a source with different
+                # ones has been severed above; a Private BLE device has none to copy.)
+                for attr in ("name_bt_local_name", "name_bt_serviceinfo", "manufacturer"):
+                    if getattr(metadevice, attr) is None and (value := getattr(source_device, attr)) is not None:
+                        setattr(metadevice, attr, value)
                         _want_name_update = True
-
-                if _want_name_update:
-                    metadevice.make_name()
-
-                # Anything that's VERY interesting, overwrite it regardless of what's already there:
-                # INTERESTING:
-                for key, val in source_device.items():
-                    if val is any(
-                        [
-                            source_device.beacon_major,
-                            source_device.beacon_minor,
-                            source_device.beacon_power,
-                            source_device.beacon_unique_id,
-                            source_device.beacon_uuid,
-                        ]
-                    ):
-                        metadevice[key] = val
-                        # _want_name_update = True
             # Done iterating sources, remove any to be dropped
             for source in _sources_to_remove:
                 metadevice.metadevice_sources.remove(source)
@@ -1561,7 +1589,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
         _superchatty = False
 
-        if device.area_advert != incumbent and tests.reason is not None:
+        if device.area_advert is not incumbent and tests.reason is not None:
             device.diag_area_switch = tests.sensortext()
 
         # Apply the newly-found closest scanner (or apply None if we didn't find one)
@@ -1588,18 +1616,22 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
           - force=True or
           - self._force_full_scanner_init=True
         """
-        _new_ha_scanners = set[BaseHaScanner]
         # Using new API in 2025.2
-        _new_ha_scanners = set(self._manager.async_current_scanners())
+        _new_ha_scanners: set[BaseHaScanner] = set(self._manager.async_current_scanners())
 
-        if _new_ha_scanners is self._hascanners or _new_ha_scanners == self._hascanners:
-            # No changes.
+        _changed = not (_new_ha_scanners is self._hascanners or _new_ha_scanners == self._hascanners)
+        if not _changed and not force:
+            # No changes, and nobody asked for a re-read.
             return
 
-        _LOGGER.debug("HA Base Scanner Set has changed, rebuilding.")
-        self._hascanners = _new_ha_scanners
-
-        self._async_purge_removed_scanners()
+        if _changed:
+            _LOGGER.debug("HA Base Scanner Set has changed, rebuilding.")
+            self._hascanners = _new_ha_scanners
+            self._async_purge_removed_scanners()
+        else:
+            # Same scanners, but something about one of them (its room, its name)
+            # may have changed in the device registry: re-read them all.
+            _LOGGER.debug("Re-reading scanner details from the device registry.")
 
         # So we can raise a single repair listing all area-less scanners:
         _scanners_without_areas: list[str] = []
@@ -1610,7 +1642,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         for hascanner in self._hascanners:
             scanner_address = mac_norm(hascanner.source)
             bermuda_scanner = self._get_or_create_device(scanner_address)
-            bermuda_scanner.async_as_scanner_init(hascanner)
+            bermuda_scanner.async_as_scanner_init(hascanner, force=force)
 
             if bermuda_scanner.area_id is None:
                 _scanners_without_areas.append(f"{bermuda_scanner.name} [{bermuda_scanner.address}]")
@@ -1681,7 +1713,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         """Return a dump of beacon advertisements by receiver."""
         out = {}
         addresses_input = call.data.get("addresses", "")
-        redact = call.data.get("redact", False)
+        redact = call.data.get("redact", True)  # redacted unless the caller asks otherwise
         configured_devices = call.data.get("configured_devices", False)
 
         # Choose filter for device/address selection
@@ -1693,8 +1725,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             # configured and scanners
             addresses += self.scanner_list
             addresses += self.options.get(CONF_DEVICES, [])
-            # known IRK/Private BLE Devices
-            addresses += self.pb_state_sources
+            # known IRK/Private BLE Devices (pb_state_sources is keyed by entity id,
+            # so take its values: the current source address of each device)
+            addresses += self.metadevices
+            addresses += [address for address in self.pb_state_sources.values() if address]
 
         # lowercase all the addresses for matching
         addresses = list(map(str.lower, addresses))
@@ -1748,8 +1782,9 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     for altmac in mac_explode_formats(address):
                         self.redactions[altmac] = f"{address[:2]}::CFG_MAC_{i}::{address[-2:]}"
                 else:
-                    # Don't know what it is, but not a mac.
-                    self.redactions[address] = f"CFG_OTHER_{1}_{address}"
+                    # Don't know what it is, but not a mac. The placeholder must not
+                    # contain the value itself (it could be an IRK).
+                    self.redactions[address] = f"CFG_OTHER_{i}"
         _LOGGER.debug("Redact confdevs: %ss, %d items", monotonic_time_coarse() - _stamp, len(self.redactions))
         # EVERYTHING ELSE
         for non_lower_address, device in self.devices.items():
@@ -1767,8 +1802,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     for altmac in mac_explode_formats(address):
                         self.redactions[altmac] = f"{address[:2]}::OTHER_MAC_{i}::{address[-2:]}"
                 else:
-                    # Don't know what it is.
-                    self.redactions[address] = f"OTHER_{i}_{address}"
+                    # Don't know what it is. The placeholder must not contain it.
+                    self.redactions[address] = f"OTHER_{i}"
         _LOGGER.debug("Redact therest: %ss, %d items", monotonic_time_coarse() - _stamp, len(self.redactions))
         _elapsed = monotonic_time_coarse() - _stamp
         if _elapsed > 0.5:

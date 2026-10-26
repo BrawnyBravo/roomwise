@@ -10,6 +10,7 @@ https://github.com/BrawnyBravo/roomwise
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -19,7 +20,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_registry import async_migrate_entries
 
-from .const import _LOGGER, DOMAIN, PLATFORMS, STARTUP_MESSAGE
+from .const import _LOGGER, CONF_DEVICES, DOMAIN, DOMAIN_PRIVATE_BLE_DEVICE, PLATFORMS, STARTUP_MESSAGE
 from .coordinator import BermudaDataUpdateCoordinator
 from .util import mac_math_offset, mac_norm
 
@@ -39,11 +40,14 @@ class BermudaData:
 
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+_STARTUP_LOGGED = f"{DOMAIN}_startup_logged"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> bool:
     """Set up this integration using UI."""
-    if hass.data.get(DOMAIN) is None:
+    # The banner once per Home Assistant run, not on every reload of the entry.
+    if not hass.data.get(_STARTUP_LOGGED):
+        hass.data[_STARTUP_LOGGED] = True
         _LOGGER.info(STARTUP_MESSAGE)
     coordinator = BermudaDataUpdateCoordinator(hass, entry)
     entry.runtime_data = BermudaData(coordinator)
@@ -105,31 +109,60 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: BermudaConfigEn
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: BermudaConfigEntry, device_entry: DeviceEntry
 ) -> bool:
-    """Implements user-deletion of devices from device registry."""
+    """
+    Implements user-deletion of devices from device registry.
+
+    The device is also dropped from the configured-devices option, otherwise the
+    next update cycle (or the next restart) would create it and its entities again.
+    """
+    if any(domain == DOMAIN_PRIVATE_BLE_DEVICE for domain, *_ in device_entry.identifiers):
+        # Roomwise tracks every Private BLE device automatically; removing it here
+        # would only last until the next restart. It is managed (and removed) in
+        # the Private BLE Device integration.
+        _LOGGER.warning(
+            "%s is a Private BLE device: remove it from the Private BLE Device integration instead",
+            device_entry.name_by_user or device_entry.name,
+        )
+        return False
+
     coordinator: BermudaDataUpdateCoordinator = config_entry.runtime_data.coordinator
     address = None
-    for domain, ident in device_entry.identifiers:
-        try:
-            if domain == DOMAIN:
-                # the identifier should be the base device address, and
-                # may have "_range" or some other per-sensor suffix.
-                # The address might be a mac address, IRK or iBeacon uuid
-                address = ident.split("_")[0]
-        except KeyError:
-            pass
-    if address is not None:
-        try:
-            coordinator.devices[mac_norm(address)].create_sensor = False
-        except KeyError:
-            _LOGGER.warning("Failed to locate device entry for %s", address)
+    for identifier in device_entry.identifiers:
+        if len(identifier) == 2 and identifier[0] == DOMAIN:
+            address = _address_from_identifier(identifier[1])
+    if address is None:
+        # Even if we don't know this address it probably just means it's stale or from
+        # a previous version that used weirder names. Allow it.
+        _LOGGER.warning(
+            "Didn't find address for %s but allowing deletion to proceed.",
+            device_entry.name,
+        )
         return True
-    # Even if we don't know this address it probably just means it's stale or from
-    # a previous version that used weirder names. Allow it.
-    _LOGGER.warning(
-        "Didn't find address for %s but allowing deletion to proceed.",
-        device_entry.name,
-    )
+
+    if device := coordinator.devices.get(address):
+        device.create_sensor = False
+    configured = config_entry.options.get(CONF_DEVICES, [])
+    remaining = [item for item in configured if mac_norm(item) != address]
+    if len(remaining) != len(configured):
+        # Saving the options reloads the integration, which is what we want here.
+        hass.config_entries.async_update_entry(config_entry, options={**config_entry.options, CONF_DEVICES: remaining})
     return True
+
+
+def _address_from_identifier(ident: str) -> str:
+    """
+    The device address in one of our device registry identifiers.
+
+    It is a MAC address, an IRK or an iBeacon uuid_major_minor, possibly with a
+    per-sensor suffix like "_range" from older versions. Only that suffix is
+    removed: splitting at the first "_" cut an iBeacon id down to its uuid.
+    """
+    if _IBEACON_ID.fullmatch(ident):
+        return ident.lower()
+    return mac_norm(ident.split("_", maxsplit=1)[0])
+
+
+_IBEACON_ID = re.compile(r"[0-9a-f]{32}_[0-9]+_[0-9]+", re.IGNORECASE)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> bool:

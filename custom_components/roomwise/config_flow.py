@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant import config_entries
-from homeassistant.config_entries import OptionsFlowWithConfigEntry
+from homeassistant.config_entries import OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.selector import (
@@ -49,6 +50,7 @@ from .const import (
     DOMAIN,
     DOMAIN_PRIVATE_BLE_DEVICE,
     NAME,
+    OPTION_RANGES,
 )
 from .util import mac_redact, rssi_to_metres
 
@@ -63,6 +65,12 @@ if TYPE_CHECKING:
 # from homeassistant import data_entry_flow
 
 # from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+
+def _ranged(key: str, kind: type = float) -> vol.All:
+    """Validator for a global option: a number of the given kind inside its allowed range."""
+    low, high = OPTION_RANGES[key]
+    return vol.All(vol.Coerce(kind), vol.Range(min=low, max=high))
 
 
 class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -109,8 +117,8 @@ class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
-        return BermudaOptionsFlowHandler(config_entry)
+    def async_get_options_flow(config_entry):  # noqa: ARG004 - Home Assistant passes it; the flow looks it up
+        return BermudaOptionsFlowHandler()
 
     # async def _show_config_form(self, user_input):  # pylint: disable=unused-argument
     #     """Show the configuration form to edit location data."""
@@ -123,12 +131,19 @@ class BermudaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     #     )
 
 
-class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry):
+class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlow):
     """Config flow options handler for bermuda."""
 
-    def __init__(self, config_entry: BermudaConfigEntry) -> None:
-        """Initialize HACS options flow."""
-        super().__init__(config_entry)
+    def __init__(self, config_entry: BermudaConfigEntry | None = None) -> None:
+        """
+        Initialize the options flow.
+
+        Home Assistant provides self.config_entry; passing the entry in (and the
+        OptionsFlowWithConfigEntry base that did so) is deprecated. The argument is
+        only accepted, and ignored, so older callers keep working.
+        """
+        super().__init__()
+        self._options: dict | None = None
         self.coordinator: BermudaDataUpdateCoordinator
         self.devices: dict[str, BermudaDevice]
         self._last_ref_power = None
@@ -136,6 +151,13 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
         self._last_scanner = None
         self._last_attenuation = None
         self._last_scanner_info = None
+
+    @property
+    def options(self) -> dict:
+        """Working copy of the entry's options, saved when the flow finishes."""
+        if self._options is None:
+            self._options = deepcopy(dict(self.config_entry.options))
+        return self._options
 
     async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
         """Manage the options."""
@@ -208,31 +230,31 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             vol.Required(
                 CONF_MAX_RADIUS,
                 default=self.options.get(CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_MAX_RADIUS),
             vol.Required(
                 CONF_MAX_VELOCITY,
                 default=self.options.get(CONF_MAX_VELOCITY, DEFAULT_MAX_VELOCITY),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_MAX_VELOCITY),
             vol.Required(
                 CONF_DEVTRACK_TIMEOUT,
                 default=self.options.get(CONF_DEVTRACK_TIMEOUT, DEFAULT_DEVTRACK_TIMEOUT),
-            ): vol.Coerce(int),
+            ): _ranged(CONF_DEVTRACK_TIMEOUT, int),
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=self.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_UPDATE_INTERVAL),
             vol.Required(
                 CONF_SMOOTHING_SAMPLES,
                 default=self.options.get(CONF_SMOOTHING_SAMPLES, DEFAULT_SMOOTHING_SAMPLES),
-            ): vol.Coerce(int),
+            ): _ranged(CONF_SMOOTHING_SAMPLES, int),
             vol.Required(
                 CONF_ATTENUATION,
                 default=self.options.get(CONF_ATTENUATION, DEFAULT_ATTENUATION),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_ATTENUATION),
             vol.Required(
                 CONF_REF_POWER,
                 default=self.options.get(CONF_REF_POWER, DEFAULT_REF_POWER),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_REF_POWER),
         }
 
         return self.async_show_form(step_id="globalopts", data_schema=vol.Schema(data_schema))
@@ -399,13 +421,13 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                 default=self._last_ref_power
                 if self._last_ref_power is not None
                 else self.options.get(CONF_REF_POWER, DEFAULT_REF_POWER),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_REF_POWER),
             vol.Required(
                 CONF_ATTENUATION,
                 default=self._last_attenuation
                 if self._last_attenuation is not None
                 else self.options.get(CONF_ATTENUATION, DEFAULT_ATTENUATION),
-            ): vol.Coerce(float),
+            ): _ranged(CONF_ATTENUATION),
             vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
         }
         if user_input is None:
@@ -422,7 +444,7 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             if scanner is None:
                 return self.async_show_form(
                     step_id="calibration1_global",
-                    errors={"err_scanner_no_record": "The selected scanner hasn't (yet) seen this device."},
+                    errors={"base": "scanner_no_record"},
                     data_schema=vol.Schema(data_schema),
                     description_placeholders=_ugly_token_hack
                     | {"suffix": "After you click Submit, the new distances will be shown here."},
@@ -477,11 +499,24 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
         """
         if user_input is not None:
             if user_input[CONF_SAVE_AND_CLOSE]:
-                # Convert the name-based dict to use MAC addresses
+                # Convert the label-based dict to use MAC addresses. A scanner whose
+                # label is missing (it appeared or was renamed since the form was
+                # shown, or its line was deleted in the editor) keeps its saved offset.
+                saved_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
+                edited = user_input[CONF_SCANNER_INFO] if isinstance(user_input[CONF_SCANNER_INFO], dict) else {}
                 rssi_offset_by_address = {}
-                for address in self.coordinator.scanner_list:
-                    scanner_name = self.coordinator.devices[address].name
-                    val = user_input[CONF_SCANNER_INFO][scanner_name]
+                for address, label in self._scanner_labels().items():
+                    try:
+                        val = float(edited.get(label, saved_offsets.get(address, 0)))
+                    except (TypeError, ValueError):
+                        self._last_scanner_info = user_input[CONF_SCANNER_INFO]
+                        self._last_device = user_input[CONF_DEVICES]
+                        return self.async_show_form(
+                            step_id="calibration2_scanners",
+                            data_schema=vol.Schema(self._calibration2_schema()),
+                            errors={"base": "invalid_offset"},
+                            description_placeholders={"suffix": ""},
+                        )
                     # Clip to keep in sensible range, fixes #497
                     rssi_offset_by_address[address] = max(min(val, 127), -127)
 
@@ -502,39 +537,25 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             self._last_scanner_info = user_input[CONF_SCANNER_INFO]
             self._last_device = user_input[CONF_DEVICES]
 
-        saved_rssi_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
-        rssi_offset_dict = {}
-
-        # Sorted by name so the list is stable and a given scanner is easy to find.
-        for scanner in self._scanner_addresses_by_name():
-            scanner_name = self.coordinator.devices[scanner].name
-            rssi_offset_dict[scanner_name] = saved_rssi_offsets.get(scanner, 0)
-        data_schema = {
-            vol.Required(
-                CONF_DEVICES,
-                default=self._last_device if self._last_device is not None else vol.UNDEFINED,
-            ): DeviceSelector(DeviceSelectorConfig(integration=DOMAIN)),
-            vol.Required(
-                CONF_SCANNER_INFO,
-                default=rssi_offset_dict if not self._last_scanner_info else self._last_scanner_info,
-            ): ObjectSelector(),
-            vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
-        }
+        data_schema = self._calibration2_schema()
         if user_input is None:
             return self.async_show_form(
                 step_id="calibration2_scanners",
                 data_schema=vol.Schema(data_schema),
                 description_placeholders={"suffix": "After you click Submit, the new distances will be shown here."},
             )
+        device = None
         if isinstance(self._last_device, str):
             device = self._get_bermuda_device_from_registry(self._last_device)
         results_str = ""
         if device is not None and isinstance(self._last_scanner_info, dict):
             results = {}
             # Gather new estimates for distances using rssi hist and the new offset.
-            for scanner in self._scanner_addresses_by_name():
-                scanner_name = self.coordinator.devices[scanner].name
-                cur_offset = self._last_scanner_info.get(scanner_name, 0)
+            for scanner, scanner_name in self._scanner_labels().items():
+                try:
+                    cur_offset = float(self._last_scanner_info.get(scanner_name, 0))
+                except (TypeError, ValueError):
+                    cur_offset = 0
                 if (scanneradvert := device.get_scanner(scanner)) is not None:
                     results[scanner_name] = [
                         rssi_to_metres(
@@ -566,6 +587,38 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
             description_placeholders={"suffix": results_str},
         )
 
+    def _calibration2_schema(self) -> dict:
+        """The calibration 2 form: device picker and the editable per-scanner offsets."""
+        saved_rssi_offsets = self.options.get(CONF_RSSI_OFFSETS, {})
+        rssi_offset_dict = {
+            label: saved_rssi_offsets.get(scanner, 0) for scanner, label in self._scanner_labels().items()
+        }
+        return {
+            vol.Required(
+                CONF_DEVICES,
+                default=self._last_device if self._last_device is not None else vol.UNDEFINED,
+            ): DeviceSelector(DeviceSelectorConfig(integration=DOMAIN)),
+            vol.Required(
+                CONF_SCANNER_INFO,
+                default=rssi_offset_dict if not self._last_scanner_info else self._last_scanner_info,
+            ): ObjectSelector(),
+            vol.Optional(CONF_SAVE_AND_CLOSE, default=False): vol.Coerce(bool),
+        }
+
+    def _scanner_labels(self) -> dict[str, str]:
+        """
+        Scanner address -> the label it is edited under, sorted by name.
+
+        The label is the scanner's name, unless two scanners share a name: then
+        each gets a shortened address too, so their offsets can be set apart.
+        """
+        addresses = self._scanner_addresses_by_name()
+        names = [str(self.coordinator.devices[address].name) for address in addresses]
+        return {
+            address: name if names.count(name) == 1 else f"{name} [{mac_redact(address)}]"
+            for address, name in zip(addresses, names, strict=True)
+        }
+
     def _scanner_addresses_by_name(self) -> list[str]:
         """Return the scanner addresses, sorted (case-insensitively) by scanner name."""
         return sorted(
@@ -592,7 +645,9 @@ class BermudaOptionsFlowHandler(AutotuneOptionsMixin, OptionsFlowWithConfigEntry
                     device_address = connection[1]
                     break
             if device_address is not None:
-                return self.coordinator.devices[device_address.lower()]
+                # It may be in the registry but not in memory (pruned, or not heard
+                # since the restart).
+                return self.coordinator.devices.get(device_address.lower())
         # We couldn't match the HA device id to a bermuda device mac.
         return None
 

@@ -192,3 +192,125 @@ async def test_options_flow_calibration2_scanner_sorting(hass: HomeAssistant):
     # Header row first, then nearest to furthest. Scanner B has not seen the device so is not shown,
     # and Scanner E has no history so sorts last.
     assert results_rows == [" Scanner ", "---", "Scanner D", "scanner a", "Scanner C", "Scanner E"]
+
+
+def _calibration2_flow(hass, scanners):
+    coordinator = _fake_coordinator(scanners)
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test", title=NAME)
+    config_entry.add_to_hass(hass)
+    config_entry.runtime_data = SimpleNamespace(coordinator=coordinator)
+    flow = BermudaOptionsFlowHandler(config_entry)
+    flow.hass = hass
+    flow.handler = config_entry.entry_id
+    flow.coordinator = coordinator
+    return flow, coordinator
+
+
+def _save(offsets):
+    return {CONF_DEVICES: "some_device_registry_id", CONF_SCANNER_INFO: offsets, CONF_SAVE_AND_CLOSE: True}
+
+
+async def test_calibration2_proxies_with_the_same_name_get_separate_offsets(hass: HomeAssistant):
+    now = monotonic_time_coarse()
+    scanners = [
+        SimpleNamespace(address="aa:bb:cc:dd:ee:01", name="Proxy", last_seen=now, hist_rssi=[]),
+        SimpleNamespace(address="aa:bb:cc:dd:ee:02", name="Proxy", last_seen=now, hist_rssi=[]),
+    ]
+    flow, _coordinator = _calibration2_flow(hass, scanners)
+    result = await flow.async_step_calibration2_scanners()
+    labels = next(key.default() for key in result["data_schema"].schema if key.schema == CONF_SCANNER_INFO)
+    assert len(labels) == 2  # one line per proxy, not one shared line
+
+    first, second = list(labels)
+    result = await flow.async_step_calibration2_scanners(user_input=_save({first: 3, second: -4}))
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert sorted(result["data"]["rssi_offsets"].values()) == [-4, 3]
+
+
+async def test_calibration2_save_survives_missing_and_bad_values(hass: HomeAssistant):
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    flow.options["rssi_offsets"] = {"aa:bb:cc:dd:ee:03": 5}
+
+    # A proxy appeared or was renamed since the form was shown: its line is missing.
+    result = await flow.async_step_calibration2_scanners(user_input=_save({"scanner a": 2}))
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    offsets = result["data"]["rssi_offsets"]
+    assert offsets["aa:bb:cc:dd:ee:01"] == 2
+    assert offsets["aa:bb:cc:dd:ee:03"] == 5  # kept its saved value
+    assert offsets["aa:bb:cc:dd:ee:04"] == 0
+
+
+async def test_calibration2_non_numeric_offset_is_a_form_error(hass: HomeAssistant):
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    result = await flow.async_step_calibration2_scanners(user_input=_save({"scanner a": "loud"}))
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_offset"}
+
+
+async def test_calibration_with_a_device_not_in_memory(hass: HomeAssistant):
+    """A Roomwise device that is in the registry but not (yet) in memory must not crash the calibration steps."""
+    from homeassistant.helpers import device_registry as dr
+
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    entry = MockConfigEntry(domain="test_other")
+    entry.add_to_hass(hass)
+    reg_device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, connections={(dr.CONNECTION_BLUETOOTH, "AA:BB:CC:DD:EE:99")}
+    )
+    assert flow._get_bermuda_device_from_registry(reg_device.id) is None
+
+    result = await flow.async_step_calibration2_scanners(
+        user_input={CONF_DEVICES: reg_device.id, CONF_SCANNER_INFO: {}, CONF_SAVE_AND_CLOSE: False}
+    )
+    assert result["type"] == FlowResultType.FORM
+
+    # A device value that is not an id (the selector cleared) does not crash either.
+    result = await flow.async_step_calibration2_scanners(
+        user_input={CONF_DEVICES: None, CONF_SCANNER_INFO: {}, CONF_SAVE_AND_CLOSE: False}
+    )
+    assert result["type"] == FlowResultType.FORM
+
+
+async def test_calibration1_scanner_that_never_heard_the_device_shows_a_translated_error(hass: HomeAssistant):
+    import json
+    from pathlib import Path
+
+    from custom_components.roomwise.const import CONF_ATTENUATION, CONF_REF_POWER, CONF_SCANNERS
+
+    flow, _coordinator = _calibration2_flow(hass, _fake_scanners())
+    device = SimpleNamespace(get_scanner=lambda address: None)
+    with patch.object(BermudaOptionsFlowHandler, "_get_bermuda_device_from_registry", return_value=device):
+        result = await flow.async_step_calibration1_global(
+            user_input={
+                CONF_DEVICES: "some_device_registry_id",
+                CONF_SCANNERS: "aa:bb:cc:dd:ee:01",
+                CONF_REF_POWER: -55.0,
+                CONF_ATTENUATION: 3.0,
+                CONF_SAVE_AND_CLOSE: False,
+            }
+        )
+    assert result["errors"] == {"base": "scanner_no_record"}
+    en = json.loads(
+        (Path(__file__).parent.parent / "custom_components" / DOMAIN / "translations" / "en.json").read_text("utf-8")
+    )
+    assert "scanner_no_record" in en["options"]["error"]
+
+
+def test_options_flow_does_not_use_the_deprecated_base_class():
+    """OptionsFlowWithConfigEntry (and passing the entry in) is deprecated in Home Assistant."""
+    from homeassistant.config_entries import OptionsFlowWithConfigEntry
+
+    assert not issubclass(BermudaOptionsFlowHandler, OptionsFlowWithConfigEntry)
+
+
+async def test_options_flow_works_without_being_given_the_entry(
+    hass: HomeAssistant, setup_bermuda_entry: MockConfigEntry, ha_deprecation_reports
+):
+    result = await hass.config_entries.options.async_init(setup_bermuda_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={"next_step_id": "globalopts"}
+    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], user_input=MOCK_OPTIONS_GLOBALS)
+    assert result.get("type") == FlowResultType.CREATE_ENTRY
+    assert setup_bermuda_entry.options == MOCK_OPTIONS_GLOBALS
+    assert ha_deprecation_reports() == []

@@ -52,7 +52,7 @@ from .const import (
     METADEVICE_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_IBEACON_SOURCE,
 )
-from .util import mac_math_offset, mac_norm, name_is_address
+from .util import irk_tag, mac_math_offset, mac_norm, name_is_address
 
 if TYPE_CHECKING:
     from bleak.backends.scanner import AdvertisementData
@@ -77,7 +77,7 @@ def _better_scanner_match(candidate: DeviceEntry, current: DeviceEntry | None) -
     return rank(candidate) >= rank(current)
 
 
-class BermudaDevice(dict):
+class BermudaDevice:
     """
     This class is to represent a single bluetooth "device" tracked by Bermuda.
 
@@ -134,7 +134,7 @@ class BermudaDevice(dict):
         self.floor_id: str | None = None
         self.floor_name: str | None = None
         self.floor_icon: str = ICON_DEFAULT_FLOOR
-        self.floor_level: str | None = None
+        self.floor_level: int | None = None
 
         self.zone: str = STATE_NOT_HOME  # STATE_HOME or STATE_NOT_HOME
         self.manufacturer: str | None = None
@@ -208,6 +208,7 @@ class BermudaDevice(dict):
                     self.metadevice_type.add(METADEVICE_PRIVATE_BLE_DEVICE)
                     self.address_type = ADDR_TYPE_PRIVATE_BLE_DEVICE
                     self.beacon_unique_id = self.address
+                    self.make_name()  # the address-based default name would be the IRK itself
                     # If we've been given a private BLE address, then the integration must be up.
                     # register to get callbacks for address changes.
                     _irk_bytes = binascii.unhexlify(self.address)
@@ -215,7 +216,7 @@ class BermudaDevice(dict):
                     self._coordinator.config_entry.async_on_unload(
                         _pble_coord.async_track_service_info(self.async_handle_pble_callback, _irk_bytes)
                     )
-                    _LOGGER.debug("Private BLE Callback registered for %s, %s", self.name, self.address)
+                    _LOGGER.debug("Private BLE Callback registered for %s", self.__repr__())
                     #
                     # Also register a callback with our own, which can fake the PBLE callbacks.
                     self._coordinator.config_entry.async_on_unload(
@@ -296,14 +297,18 @@ class BermudaDevice(dict):
         self._is_remote_scanner = False
         self._coordinator.scanner_list_del(self)
 
-    def async_as_scanner_init(self, ha_scanner: BaseHaScanner):
+    def async_as_scanner_init(self, ha_scanner: BaseHaScanner, *, force: bool = False):
         """
         Configure this device as a scanner device.
 
-        Use to set up a device as a scanner.
+        Use to set up a device as a scanner. With force=True an already set-up
+        scanner re-reads its name, room and floor from the device registry.
         """
         if self._hascanner is ha_scanner:
-            # Actual object has not changed, we're good.
+            # Actual object has not changed, so no new set-up is needed, but the
+            # user may have moved or renamed the proxy.
+            if force:
+                self.async_as_scanner_resolve_device_entries()
             return
 
         # If we don't already have a self._hascanner, then this must be our
@@ -503,7 +508,7 @@ class BermudaDevice(dict):
                 if self.floor is not None:
                     self.floor_name = self.floor.name
                     self.floor_icon = self.floor.icon or ICON_DEFAULT_FLOOR
-                    self.floor_level = self.floor_level
+                    self.floor_level = self.floor.level
                 else:
                     # floor_id was invalid
                     _LOGGER_SPAM_LESS.warning(
@@ -521,6 +526,7 @@ class BermudaDevice(dict):
                 self.floor = None
                 self.floor_name = None
                 self.floor_icon = ICON_DEFAULT_FLOOR
+                self.floor_level = None
         else:
             _LOGGER_SPAM_LESS.warning(
                 f"no_area_on_update{self.name}",
@@ -535,6 +541,7 @@ class BermudaDevice(dict):
             self.floor_id = None
             self.floor_name = None
             self.floor_icon = ICON_DEFAULT_FLOOR
+            self.floor_level = None
 
     def async_as_scanner_update(self, ha_scanner: BaseHaScanner):
         """
@@ -639,11 +646,15 @@ class BermudaDevice(dict):
             or self.name_devreg
             or self.name_bt_local_name
             or self.name_bt_serviceinfo
-            or self.beacon_unique_id
+            # A Private BLE device's unique id is its IRK, which must never become
+            # a name (names are shown in the UI and written to the log).
+            or (self.beacon_unique_id if self.address_type != ADDR_TYPE_PRIVATE_BLE_DEVICE else None)
         )
 
         if _newname is not None:
             self.name = _newname
+        elif self.address_type == ADDR_TYPE_PRIVATE_BLE_DEVICE:
+            self.name = f"{DOMAIN}_{slugify(irk_tag(self.address))}"
         elif self.address_type != BDADDR_TYPE_NOT_MAC48:
             # Couldn't find anything nice, we'll have to use the address.
             # At least see if we can prefix it with manufacturer name
@@ -666,19 +677,14 @@ class BermudaDevice(dict):
         if new_ref_power != self.ref_power:
             # it's actually changed, proceed...
             self.ref_power = new_ref_power
-            nearest_distance = 9999  # running tally to find closest scanner
-            nearest_scanner = None
             for advert in self.adverts.values():
-                rawdist = advert.set_ref_power(new_ref_power)
-                if rawdist is not None and rawdist < nearest_distance:
-                    nearest_distance = rawdist
-                    nearest_scanner = advert
-            # Even though the actual scanner should not have changed (it should
-            # remain none or a given scanner, since the relative distances won't have
-            # changed due to ref_power), we still call apply so that the new area_distance
-            # gets applied.
-            # if nearest_scanner is not None:
-            self.apply_scanner_selection(nearest_scanner)
+                advert.set_ref_power(new_ref_power)
+            # Show the new distance to the current room's receiver straight away.
+            # The room itself is left to the coordinator's next update: picking the
+            # receiver with the smallest raw distance here ignored receivers without
+            # a room, max radius, hysteresis and stale readings, so the room flickered.
+            if self.area_advert is not None and self.area_advert.rssi_distance is not None:
+                self.area_distance = self.area_advert.rssi_distance
             # Update the stamp so that the BermudaEntity can clear the cache and show the
             # new measurement(s) immediately.
             self.ref_power_changed = monotonic_time_coarse()
@@ -824,51 +830,54 @@ class BermudaDevice(dict):
             self.make_name()
 
         # ==== Check manfuacturer data (type 0xFF)
-        for manudict in advert.manufacturer_data:
+        # Only the newest frame is looked at: the history (newest first) holds frames
+        # that were each processed when they arrived. Walking the whole history used
+        # to leave a beacon that changed its major/minor on its OLDEST identity.
+        for manudict in advert.manufacturer_data[:1]:
             for company_code, man_data in manudict.items():
                 name, generic = self._coordinator.get_manufacturer_from_id(company_code)
                 if name and (self.manufacturer is None or not generic):
                     self.manufacturer = name
 
-                if company_code == 0x004C:  # 76 Apple Inc
-                    if man_data[:1] == b"\x02":  # iBeacon: Almost always 0x0215, but 0x15 is the length part
-                        # iBeacon / UUID Support
+                # 76 is Apple Inc. iBeacon is almost always 0x0215, but 0x15 is the length part.
+                # Bermuda supports iBeacons by creating a "metadevice", which
+                # looks just like any other Bermuda device, but its address is
+                # the iBeacon full uuid_maj_min and it has helpers that gather
+                # together the advertisements from a set of source_devices - this
+                # device instance is about to become just such a metadevice.source_device
+                #
+                # A frame needs 22 bytes to hold uuid, major and minor. At least one
+                # iBeacon out there sends exactly 22 (no tx_power field, see #466), so
+                # power is optional; anything shorter is not a usable iBeacon.
+                if company_code == 0x004C and man_data[:1] == b"\x02" and len(man_data) >= 22:
+                    self._apply_ibeacon_frame(man_data)
 
-                        # Bermuda supports iBeacons by creating a "metadevice", which
-                        # looks just like any other Bermuda device, but its address is
-                        # the iBeacon full uuid_maj_min and it has helpers that gather
-                        # together the advertisements from a set of source_devices - this
-                        # device instance is about to become just such a metadevice.source_device
+    def _apply_ibeacon_frame(self, man_data: bytes) -> None:
+        """Take this device's iBeacon identity from a (validated) iBeacon frame."""
+        old_unique_id = self.beacon_unique_id
+        self.metadevice_type.add(METADEVICE_TYPE_IBEACON_SOURCE)
+        self.beacon_uuid = man_data[2:18].hex().lower()
+        self.beacon_major = str(int.from_bytes(man_data[18:20], byteorder="big"))
+        self.beacon_minor = str(int.from_bytes(man_data[20:22], byteorder="big"))
+        self.beacon_power = int.from_bytes(man_data[22:23], signed=True) if len(man_data) >= 23 else None
 
-                        # At least one(!) iBeacon out there sends only 22 bytes (it has no tx_power field)
-                        # which is weird. So Let's just decode what we can that exists, and blindly proceed
-                        # otherwise. We could reject it, but it can still be useful, so...
-                        if len(man_data) >= 22:
-                            # Proper iBeacon packet has 23 bytes.
-                            self.metadevice_type.add(METADEVICE_TYPE_IBEACON_SOURCE)
-                            self.beacon_uuid = man_data[2:18].hex().lower()
-                            self.beacon_major = str(int.from_bytes(man_data[18:20], byteorder="big"))
-                            self.beacon_minor = str(int.from_bytes(man_data[20:22], byteorder="big"))
-                        if len(man_data) >= 23:
-                            # There really is at least one out there that lacks this! See #466
-                            self.beacon_power = int.from_bytes([man_data[22]], signed=True)
+        # The irony of adding major/minor is that the
+        # UniversallyUniqueIDentifier is not even unique
+        # locally, so we need to make one :-)
+        self.beacon_unique_id = f"{self.beacon_uuid}_{self.beacon_major}_{self.beacon_minor}"
 
-                        # The irony of adding major/minor is that the
-                        # UniversallyUniqueIDentifier is not even unique
-                        # locally, so we need to make one :-)
-
-                        self.beacon_unique_id = f"{self.beacon_uuid}_{self.beacon_major}_{self.beacon_minor}"
-                        # Note: it's possible that a device sends multiple
-                        # beacons. We are only going to process the latest
-                        # one in any single update cycle, so we ignore that
-                        # possibility for now. Given we re-process completely
-                        # each cycle it should *just work*, for the most part.
-
-                        # Create a metadevice for this beacon. Metadevices get updated
-                        # after all adverts are processed and distances etc are calculated
-                        # for the sources.
-                        self.make_name()
-                        self._coordinator.register_ibeacon_source(self)
+        # Create (or join) the metadevice for this beacon. Metadevices get updated
+        # after all adverts are processed and distances etc are calculated for the
+        # sources. Skip it when nothing changed: a device alternating an iBeacon
+        # frame with another frame would otherwise re-register on every packet.
+        metadevice = self._coordinator.metadevices.get(self.beacon_unique_id)
+        if (
+            self.beacon_unique_id != old_unique_id
+            or metadevice is None
+            or self.address not in metadevice.metadevice_sources
+        ):
+            self.make_name()
+            self._coordinator.register_ibeacon_source(self)
 
     def to_dict(self):
         """Convert class to serialisable dict for dump_devices."""
@@ -906,4 +915,7 @@ class BermudaDevice(dict):
 
     def __repr__(self) -> str:
         """Help debug devices and figure out what device it is at a glance."""
+        if self.address_type == ADDR_TYPE_PRIVATE_BLE_DEVICE:
+            # The address of a Private BLE device is its IRK: never log it.
+            return f"{self.name} [{irk_tag(self.address)}]"
         return f"{self.name} [{self.address}]"

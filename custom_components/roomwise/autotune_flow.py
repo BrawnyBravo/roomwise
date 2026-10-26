@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -15,7 +16,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 
-from .autotune import Landmark, format_table
+from .autotune import DEFAULT_MIN_LANDMARKS, Landmark, format_table
 from .autotune_ha import (
     CONF_AUTOTUNE_LANDMARKS,
     DEFAULT_AUTOTUNE_MINUTES,
@@ -32,8 +33,6 @@ from .autotune_ha import (
 from .const import CONF_MAX_RADIUS, CONF_RSSI_OFFSETS, CONF_SCANNER_MAX_RADIUS, DEFAULT_MAX_RADIUS
 
 if TYPE_CHECKING:
-    import asyncio
-
     from .autotune import TuneReport
     from .autotune_ha import Candidate, Discovery
 
@@ -67,7 +66,11 @@ class AutotuneOptionsMixin:
             minutes = float(user_input[CONF_AUTOTUNE_MINUTES])
             selected = [a.lower() for a in user_input.get(CONF_AUTOTUNE_SELECTED, [])]
             # Bound the work: memory for the readings and CPU for the fair test.
-            if len(selected) > MAX_AUTOTUNE_LANDMARKS:
+            if len(selected) < DEFAULT_MIN_LANDMARKS:
+                # The tuner cannot suggest anything with fewer; say so now rather
+                # than after the whole listening time.
+                errors["base"] = "autotune_too_few_devices"
+            elif len(selected) > MAX_AUTOTUNE_LANDMARKS:
                 errors["base"] = "autotune_too_many_devices"
             elif len(selected) * minutes > MAX_AUTOTUNE_DEVICE_MINUTES:
                 errors["base"] = "autotune_too_long"
@@ -166,6 +169,14 @@ class AutotuneOptionsMixin:
                 "roomwise autotune",
                 eager_start=False,  # always go through the progress screen
             )
+            # The run listens to this coordinator; if the integration unloads or
+            # reloads (up to an hour later), stop it rather than collect nothing.
+            task = self._autotune_task
+
+            def _stop_run() -> None:
+                task.cancel()  # its return value must not reach the unload machinery
+
+            self.config_entry.async_on_unload(_stop_run)
         if not self._autotune_task.done():
             return self.async_show_progress(
                 step_id="autotune_collect",
@@ -175,6 +186,10 @@ class AutotuneOptionsMixin:
             )
         try:
             self._autotune_report = self._autotune_task.result()
+        except asyncio.CancelledError:
+            # Not an Exception, so it used to escape this handler.
+            _LOGGER.warning("Auto-tune was stopped before it finished (Roomwise was reloaded or unloaded)")
+            return self.async_show_progress_done(next_step_id="autotune_failed")
         except Exception:
             _LOGGER.exception("Auto-tune failed")
             return self.async_show_progress_done(next_step_id="autotune_failed")

@@ -6,6 +6,74 @@
 
 - Roomwise now needs Home Assistant 2026.10.0 or newer (tested on 2026.10.1). HACS will not offer this version to older installs.
 
+### Fixed
+
+- Putting a proxy in a room, moving it to another room or renaming it in Home Assistant now takes effect straight
+  away. Before, Roomwise kept using the old room and name until Home Assistant restarted, so the "proxies without a
+  room" repair stayed up and nobody was placed in the newly assigned room.
+- If an update cycle ever fails, Roomwise no longer retries it on every Bluetooth advert (often hundreds a second),
+  which could tie up a processor core and flood the log. It now retries at most once every couple of seconds and
+  logs the error once.
+- An iBeacon that changes its identity (major/minor, for example a beacon with a "movement" mode) now follows its
+  newest identity. Before, it stayed on the oldest one it had sent recently, so the beacon you track showed as away
+  while an old identity kept a location.
+- Apple frames too short to be an iBeacon no longer create a shared, nameless beacon that merged unrelated devices,
+  and devices that alternate an iBeacon with another payload are no longer re-matched on every packet.
+- Global Options and Calibration 1 now refuse values that break the distance maths (for example an attenuation of 0,
+  which stopped every device from getting a distance or room, or a max radius of 0, which made auto-tune fail after
+  its full listening time). A bad value saved by an older version is replaced by the default, with a warning in the
+  log. Allowed ranges: max radius at least 0.1 m, max velocity at least 0.1 m/s, away timeout at least 1 s, update
+  interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
+- `dump_devices` with `configured_devices` now includes Private BLE devices (phones and watches) and their current
+  addresses; before, it matched them by the wrong key and left them out.
+- The "area switch" diagnostic is recorded again when a device moves from one receiver to another (it was only
+  updated when a device became placed or unplaced).
+- Deleting a tracked device (or iBeacon) from its device page now sticks: it is also removed from Select Devices, so
+  it no longer comes back with all its entities after the next restart. Private BLE devices (phones and watches)
+  are tracked automatically, so the delete button now says no and the log explains to remove them in the Private
+  BLE Device integration instead.
+- Calibration 2 (per-proxy offsets): two proxies with the same name now get a line each (with a shortened address)
+  and can be set separately. Saving no longer fails with "Unknown error" when a proxy appeared or was renamed while
+  the form was open or a line was deleted (that proxy keeps its saved offset), and a value that is not a number
+  shows a clear error instead.
+- One proxy from an integration that does not register a network address no longer stops "Distance to <proxy>"
+  sensors from being created for every tracked device. Ready proxies get them straight away; such a proxy gets its
+  own after two minutes.
+- "Area Last Seen" no longer shows the word "None" as a room after a restart when it had no room saved.
+- The calibration steps no longer fail with "Unknown error" when the chosen device has not been heard since the
+  restart.
+- Calibration 1 now shows a readable message when the chosen proxy has not heard the chosen device.
+- The Area, Floor, Nearest Scanner, Area Last Seen, area-switch and count sensors no longer report a made-up device
+  class (`roomwise__custom_device_class`); they now have none.
+- Less work on busy installs: entities no longer rewrite an unchanged state every second.
+- Adding your first floor, putting a room on a floor or renaming a room now takes effect without a restart (Floor
+  sensors are added for devices that did not have one).
+- The `floor_level` attribute of the Area and Floor sensors now holds the floor's level (it was always empty).
+- A phone or watch added as a Private BLE device is matched to the address it is using right now, even when that
+  address has been in use for a long time.
+- Changing a device's reference power no longer makes its room flicker to a receiver the room rules would not pick.
+- Auto-tune notes about devices in rooms without a receiver now name the receiver that actually holds them, never
+  one without a room.
+- Auto-tune's Apply no longer rounds offsets it did not change (a 2.5 dB offset set by hand stays 2.5), and saves
+  the offsets it did change exactly as it scored them.
+- If Roomwise is reloaded while auto-tune is listening, the run now stops and says it failed, instead of carrying on
+  with nothing to listen to and reporting every device as not heard.
+- Auto-tune now asks for at least 3 devices that never move before it starts listening, instead of telling you it
+  needed more after the whole listening time.
+
+### Privacy
+
+- Identity keys (IRKs) of phones and watches are no longer written to the Home Assistant log, at any log level, not
+  even in part. An IRK lets anyone who has it follow that device, and debug logs are often posted publicly. Log lines
+  now carry a short tag (like `irk#3fa9c1`) that cannot be turned back into the key. A Private BLE device that has
+  not been named yet is no longer named after its key either.
+- The `roomwise.dump_devices` action can now only be called by Home Assistant administrators, and its output is
+  redacted by default. Before, any signed-in user (or any long-lived token) could get every device's Bluetooth
+  address and the identity keys of everyone's phones. Pass `redact: false` to get the raw output for your own
+  troubleshooting.
+- Redacted output (diagnostics and `dump_devices`) no longer includes the original value inside the placeholder for
+  ids that are neither a Bluetooth address nor an iBeacon, such as an identity key saved as a configured device.
+
 ## 0.1.2 (2026-10-15)
 
 ### Added

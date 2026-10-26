@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ADDR_TYPE_IBEACON,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
-    ATTRIBUTION,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -53,6 +52,7 @@ class BermudaEntity(CoordinatorEntity):
         self.bermuda_update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
         self.bermuda_last_state: Any = 0
         self.bermuda_last_stamp: float = 0
+        self._last_written: tuple | None = None  # see _handle_coordinator_update
 
     def _cached_ratelimit(self, statevalue: Any, fast_falling=True, fast_rising=False, interval=None):
         """
@@ -98,7 +98,20 @@ class BermudaEntity(CoordinatorEntity):
             if self.device_entry:
                 # We have a new name locally, so let's update the device registry.
                 self.dr.async_update_device(self.device_entry.id, name=self._device.name)
+        # The coordinator updates about once a second for every entity of every
+        # device; only write when something the user can see has changed.
+        fingerprint = self._state_fingerprint()
+        if fingerprint is not None and fingerprint == self._last_written:
+            return
+        self._last_written = fingerprint
         self.async_write_ha_state()
+
+    def _state_fingerprint(self) -> tuple | None:
+        """What a state write would show (None: could not tell, so write anyway)."""
+        try:
+            return (self.state, self.available, self.icon, self.name, self.extra_state_attributes)
+        except Exception:  # noqa: BLE001 - never let the comparison stop a write
+            return None
 
     @property
     def unique_id(self):
@@ -166,15 +179,6 @@ class BermudaEntity(CoordinatorEntity):
         #    device_info['id'] = existing_device_id
 
         return device_info
-
-    @property
-    def device_state_attributes(self):
-        """Return the state attributes."""
-        return {
-            "attribution": ATTRIBUTION,
-            "id": str(self.coordinator.data.get("id")),
-            "integration": DOMAIN,
-        }
 
 
 class BermudaGlobalEntity(CoordinatorEntity):

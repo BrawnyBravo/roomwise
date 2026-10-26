@@ -11,5 +11,5 @@ dump_devices:
       default: true
     redact:
       required: false
-      example: "False"
-      default: false
+      example: "True"
+      default: true

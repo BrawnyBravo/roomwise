@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant.components.sensor import RestoreSensor, SensorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
@@ -19,6 +20,7 @@ from .const import (
     _LOGGER,
     ADDR_TYPE_IBEACON,
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
+    SCANNER_NETWORK_MAC_WAIT,
     SIGNAL_DEVICE_NEW,
     SIGNAL_SCANNERS_CHANGED,
 )
@@ -73,6 +75,7 @@ async def async_setup_entry(
             entities.append(BermudaSensor(coordinator, entry, address))
             if coordinator.have_floors:
                 entities.append(BermudaSensorFloor(coordinator, entry, address))
+                created_floors.add(address)
             entities.append(BermudaSensorRange(coordinator, entry, address))
             entities.append(BermudaSensorScanner(coordinator, entry, address))
             entities.append(BermudaSensorRssi(coordinator, entry, address))
@@ -93,22 +96,28 @@ async def async_setup_entry(
         # tell the co-ord we've done it.
         coordinator.sensor_created(address)
 
+    waiting_scanners: set[str] = set()  # scanners not ready for their entities yet
+    created_floors: set[str] = set()  # devices that have their Floor sensor
+
     def create_scanner_entities():
         # These are per-proxy entities on each device, and scanners may come and
         # go over time. So we need to maintain our matrix of which ones we have already
         # spun-up so we don't duplicate any.
-
+        #
+        # A scanner that is not ready yet is skipped (and retried on later updates)
+        # rather than holding back the entities of every other scanner: one proxy
+        # from an integration that never registers a network MAC used to block
+        # all "Distance to" sensors for good.
+        waiting_scanners.clear()
+        ready = []
         for scanner in coordinator.get_scanners:
-            if (
-                scanner.is_remote_scanner is None  # usb/HCI scanner's are fine.
-                or (scanner.is_remote_scanner and scanner.address_wifi_mac is None)
-            ):
-                # This scanner doesn't have a wifi mac yet, bail out
-                # until they are all filled out.
-                return
+            if _scanner_ready(scanner):
+                ready.append(scanner.address)
+            else:
+                waiting_scanners.add(scanner.address)
 
         entities = []
-        for scanner in coordinator.scanner_list:
+        for scanner in ready:
             for address in created_devices:
                 if address not in created_scanners.get(scanner, []):
                     _LOGGER.debug(
@@ -130,10 +139,22 @@ async def async_setup_entry(
         """Callback for event from coordinator advising that the roster of scanners has changed."""
         create_scanner_entities()
 
+    @callback
+    def retry_waiting_scanners() -> None:
+        """On each update, create entities for scanners that have become ready."""
+        if waiting_scanners and created_devices:
+            create_scanner_entities()
+        # Floor sensors for devices set up before the first floor existed.
+        if coordinator.have_floors and len(created_floors) < len(created_devices):
+            missing = [address for address in created_devices if address not in created_floors]
+            async_add_entities([BermudaSensorFloor(coordinator, entry, address) for address in missing], False)
+            created_floors.update(missing)
+
     # Connect device_new to a signal so the coordinator can call it
     _LOGGER.debug("Registering device_new and scanners_changed callbacks")
     entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_DEVICE_NEW, device_new))
     entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_SCANNERS_CHANGED, scanners_changed))
+    entry.async_on_unload(coordinator.async_add_listener(retry_waiting_scanners))
 
     # Create Global Bermuda entities
     async_add_entities(
@@ -144,6 +165,23 @@ async def async_setup_entry(
             BermudaVisibleDeviceCount(coordinator, entry),
         )
     )
+
+
+def _scanner_ready(scanner) -> bool:
+    """
+    Is this scanner ready for its per-device "Distance to" entities.
+
+    Their unique_id uses the proxy's network (Wi-Fi) MAC where it has one, for
+    compatibility with older ESPHome versions, so for a remote proxy we wait a
+    little after it is first seen for its integration (ESPHome, Shelly) to
+    register that MAC. Proxies from integrations that never register one go
+    ahead with their Bluetooth address after that.
+    """
+    if scanner.is_remote_scanner is None:
+        return False  # not set up as a scanner yet
+    if not scanner.is_remote_scanner or scanner.address_wifi_mac is not None:
+        return True
+    return monotonic_time_coarse() - scanner.first_seen > SCANNER_NETWORK_MAC_WAIT
 
 
 class BermudaSensor(BermudaEntity, SensorEntity):
@@ -199,9 +237,13 @@ class BermudaSensor(BermudaEntity, SensorEntity):
 
     @property
     def device_class(self):
-        """Return de device class of the sensor."""
-        # There isn't one for "Area Names" so we'll arbitrarily define our own.
-        return "roomwise__custom_device_class"
+        """
+        Room, floor and receiver names have no device class.
+
+        (A made-up one was used before; it is not a SensorDeviceClass and Home
+        Assistant only stored it as an unknown string.)
+        """
+        return None
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
@@ -359,11 +401,13 @@ class BermudaSensorScannerRange(BermudaSensorRange):
         self.config_entry = config_entry
         self._device = coordinator.devices[address]
         self._scanner = coordinator.devices[scanner_address]
+        # Retaining legacy wifi mac for unique_id. Fixed when the entity is made, so
+        # a network MAC registered later cannot change an existing entity's id.
+        self._scanner_uid = self._scanner.address_wifi_mac or self._scanner.address
 
     @property
     def unique_id(self):
-        # Retaining legacy wifi mac for unique_id
-        return f"{self._device.unique_id}_{self._scanner.address_wifi_mac or self._scanner.address}_range"
+        return f"{self._device.unique_id}_{self._scanner_uid}_range"
 
     @property
     def name(self):
@@ -406,7 +450,7 @@ class BermudaSensorScannerRangeRaw(BermudaSensorScannerRange):
         # Using address_wifi_mac as a legacy action, because esphome changed from
         # sending WIFI MAC to BLE MAC as its source address, in ESPHome 2025.3.0
         #
-        return f"{self._device.unique_id}_{self._scanner.address_wifi_mac or self._scanner.address}_range_raw"
+        return f"{self._device.unique_id}_{self._scanner_uid}_range_raw"
 
     @property
     def name(self):
@@ -470,7 +514,10 @@ class BermudaSensorAreaLastSeen(BermudaSensor, RestoreSensor):
     async def async_added_to_hass(self) -> None:
         """Restore last saved value before adding to HASS."""
         await super().async_added_to_hass()
-        if (sensor_data := await self.async_get_last_sensor_data()) is not None:
+        if (sensor_data := await self.async_get_last_sensor_data()) is not None and (
+            sensor_data.native_value is not None
+        ):
+            # An unknown last state stays unknown (str() made it the text "None").
             self._attr_native_value = str(sensor_data.native_value)
             self._device.area_last_seen = str(sensor_data.native_value)
 
@@ -484,11 +531,6 @@ class BermudaGlobalSensor(BermudaGlobalEntity, SensorEntity):
     def name(self):
         """Return the name of the sensor."""
         return "Area"
-
-    @property
-    def device_class(self):
-        """Return de device class of the sensor."""
-        return "roomwise__custom_device_class"
 
 
 class BermudaTotalProxyCount(BermudaGlobalSensor):

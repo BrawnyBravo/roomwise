@@ -259,3 +259,25 @@ async def test_scanner_lookup_uses_no_deprecated_registry_calls(hass, ha_depreca
     scanner.async_as_scanner_init(ha_scanner)
     assert scanner.name == "Hall proxy"
     assert ha_deprecation_reports() == []
+
+
+async def test_floor_level_follows_the_room(hass):
+    """The floor_level attribute comes from the room's floor (it was never filled in)."""
+    from homeassistant.helpers import floor_registry as fr
+
+    coordinator = MagicMock()
+    coordinator.options = {}
+    coordinator.hass = hass
+    upstairs = fr.async_get(hass).async_create("Upstairs", level=1)
+    bedroom = ar.async_get(hass).async_create("Bedroom")
+    ar.async_get(hass).async_update(bedroom.id, floor_id=upstairs.floor_id)
+    hall = ar.async_get(hass).async_create("Hall")  # no floor
+    device = BermudaDevice(address="AA:BB:CC:DD:EE:FF", coordinator=coordinator)
+
+    device._update_area_and_floor(bedroom.id)
+    assert device.floor_level == 1
+    device._update_area_and_floor(hall.id)
+    assert device.floor_level is None
+    device._update_area_and_floor(bedroom.id)
+    device._update_area_and_floor("no_such_area")
+    assert device.floor_level is None

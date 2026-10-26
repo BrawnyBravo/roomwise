@@ -21,7 +21,6 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 # either way it works).
 VERSION = "0.0.0"
 
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 DOCS_URL = "https://github.com/BrawnyBravo/roomwise"  # shown in the setup form via the {url} placeholder
 ISSUE_URL = f"{DOCS_URL}/issues"
 
@@ -53,6 +52,10 @@ SIGNAL_DEVICE_NEW = f"{DOMAIN}-device-new"
 SIGNAL_SCANNERS_CHANGED = f"{DOMAIN}-scanners-changed"
 
 UPDATE_INTERVAL = 1.05  # Seconds between bluetooth data processing cycles
+# How long a remote proxy gets, after Roomwise first sees it, for its integration
+# (ESPHome, Shelly) to register its network MAC before its "Distance to" sensors
+# are created with its Bluetooth address instead.
+SCANNER_NETWORK_MAC_WAIT: Final = 120
 # Note: this is separate from the CONF_UPDATE_INTERVAL which allows the
 # user to indicate how often sensors should update. We need to check bluetooth
 # stats often to get good responsiveness for beacon approaches and to make
@@ -204,6 +207,29 @@ DOCS[CONF_SMOOTHING_SAMPLES] = (
     "How many samples to average distance smoothing. Bigger numbers"
     " make for slower distance increases. 10 or 20 seems good."
 )
+
+# Allowed ranges for the global options (and calibration step 1). Values outside
+# these either crash the distance maths (attenuation 0 divides by zero, a max
+# radius of 0 or less has no logarithm) or silently break it.
+OPTION_RANGES: Final[dict[str, tuple[float | None, float | None]]] = {
+    CONF_MAX_RADIUS: (0.1, None),
+    CONF_MAX_VELOCITY: (0.1, None),
+    CONF_DEVTRACK_TIMEOUT: (1, None),
+    CONF_UPDATE_INTERVAL: (0, None),
+    CONF_SMOOTHING_SAMPLES: (1, 1000),
+    CONF_ATTENUATION: (0.5, 10),
+    CONF_REF_POWER: (-127, 0),
+}
+OPTION_DEFAULTS: Final[dict[str, float]] = {
+    CONF_MAX_RADIUS: DEFAULT_MAX_RADIUS,
+    CONF_MAX_VELOCITY: DEFAULT_MAX_VELOCITY,
+    CONF_DEVTRACK_TIMEOUT: DEFAULT_DEVTRACK_TIMEOUT,
+    CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
+    CONF_SMOOTHING_SAMPLES: DEFAULT_SMOOTHING_SAMPLES,
+    CONF_ATTENUATION: DEFAULT_ATTENUATION,
+    CONF_REF_POWER: DEFAULT_REF_POWER,
+}
+
 
 # Defaults
 DEFAULT_NAME = DOMAIN

@@ -195,8 +195,8 @@ room than with your current settings (or as many, with fewer devices in proxy-le
 2. Go to **Settings, Devices & Services, Roomwise, Configure, Auto-tune rooms**.
 3. Tick devices that **never move**: smart plugs, light bulbs, TVs, speakers, appliances. Devices
    Home Assistant already knows the room of are pre-ticked. Do not tick phones, watches, tags, or
-   anything carried around. A few devices in each room with a proxy is ideal; up to 60 devices, and
-   devices x minutes up to 1200. Some fixed devices (those whose Bluetooth address looks like one that
+   anything carried around. A few devices in each room with a proxy is ideal; at least 3 and up to 60
+   devices, and devices x minutes up to 1200. Some fixed devices (those whose Bluetooth address looks like one that
    could change) only appear in the list after Roomwise has heard them steadily for about 20 minutes,
    for example right after a restart of Home Assistant. If one is missing, wait and open Auto-tune
    again.
@@ -240,6 +240,10 @@ needs you can solve with template sensors.
 
 With no parameters it returns all data. The `addresses` parameter limits the result to one or more
 MAC addresses (or iBeacon UUIDs). See the parameter descriptions under Developer Tools, Actions.
+
+Only Home Assistant administrators can call it. The output is redacted by default: Bluetooth addresses
+and the identity keys of phones and watches are replaced with placeholders. Setting `redact: false`
+returns them as they are, for your own troubleshooting only; do not post that output publicly.
 
 The format of this dump is internal and may change in any release without being treated as a
 breaking change.
