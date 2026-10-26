@@ -84,7 +84,7 @@ Bermuda for a while, then move your automations over and remove Bermuda.
 
 ## What you need
 
-- Home Assistant 2026.9.0 or newer (tested on 2026.9.3). HACS will not install it on older versions.
+- Home Assistant 2026.10.0 or newer (tested on 2026.10.1). HACS will not install it on older versions.
 - One or more devices providing Bluetooth proxy information to Home Assistant's Bluetooth integration:
   - ESPHome devices with the `bluetooth_proxy` component enabled.
   - Shelly Plus or later devices with Bluetooth proxying enabled in the Shelly integration.
