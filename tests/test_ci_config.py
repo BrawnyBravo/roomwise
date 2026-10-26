@@ -39,7 +39,7 @@ def test_ci_python_satisfies_home_assistant():
     assert ci >= (int(needs.group(1)), int(needs.group(2)))
 
 
-MIN_HA = "2026.9.0"  # oldest Home Assistant this is tested on (the suite's pinned pair is 2026.9.x)
+MIN_HA = "2026.10.0"  # oldest Home Assistant this is tested on (the suite's pinned pair is 2026.10.x)
 
 
 def _version_tuple(text: str) -> tuple[int, ...]:
@@ -91,7 +91,7 @@ def test_test_requirements_cover_the_ha_components_roomwise_loads():
     A clean CI install (requirements_test.txt only) must import everything.
 
     Home Assistant installs a component's own requirements at runtime, not as
-    package dependencies, so the test environment has to list them (HA 2026.9's
+    package dependencies, so the test environment has to list them (HA 2026.10's
     usb component, pulled in by bluetooth, needs serialx).
     """
     import homeassistant  # noqa: PLC0415

@@ -1,7 +1,7 @@
 {
   "name": "Roomwise",
   "hacs": "1.6.0",
-  "homeassistant": "2026.9.0",
+  "homeassistant": "2026.10.0",
   "render_readme": true,
   "zip_release": true,
   "filename": "roomwise.zip",

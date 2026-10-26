@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Roomwise now needs Home Assistant 2026.10.0 or newer (tested on 2026.10.1). HACS will not offer this version to older installs.
+
 ## 0.1.2 (2026-10-15)
 
 ### Added
