@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Roomwise now needs Home Assistant 2026.10.0 or newer (tested on 2026.10.1). HACS will not offer this version to older installs.
+
 ### Fixed
 
 - Putting a proxy in a room, moving it to another room or renaming it in Home Assistant now takes effect straight
