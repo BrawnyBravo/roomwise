@@ -2,7 +2,7 @@
 # Pinned as a pair that is known to work together: each
 # pytest-homeassistant-custom-component release pins one Home Assistant release.
 # Bump both together (and re-run the suite) when moving to a newer HA.
-pytest-homeassistant-custom-component==0.13.372
+pytest-homeassistant-custom-component==0.13.373
 homeassistant==2026.10.1
 # Requirements of Home Assistant components Roomwise loads that Home Assistant
 # installs at runtime rather than as package dependencies (HA 2026.10.1 usb manifest).
