@@ -1450,10 +1450,6 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         tests = self.AreaTests()
         tests.device = device.name
 
-        _superchatty = False  # Set to true for very verbose logging about area wins
-        # if device.name in ("Ash Pixel IRK", "Garage", "Melinda iPhone"):
-        #     _superchatty = True
-
         for challenger in device.adverts.values():
             # Check each scanner and any time one is found to be closer / better than
             # the existing closest_scanner, replace it. At the end we should have the
@@ -1509,12 +1505,6 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             ):
                 # Default Instawin!
                 incumbent = challenger
-                if _superchatty:
-                    _LOGGER.debug(
-                        "%s IS closesr to %s: Encumbant is invalid",
-                        device.name,
-                        challenger.name,
-                    )
                 continue
 
             # NOTE:
@@ -1596,15 +1586,6 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
             tests.reason = "WIN by not losing!"
 
             incumbent = challenger
-
-        if _superchatty and tests.reason is not None:
-            _LOGGER.info(
-                "***************\n**************** %s *******************\n%s",
-                tests.reason,
-                tests,
-            )
-
-        _superchatty = False
 
         if device.area_advert is not incumbent and tests.reason is not None:
             device.diag_area_switch = tests.sensortext()
