@@ -30,6 +30,11 @@ ICON_DEFAULT_AREA: Final = "mdi:land-plots-marker"
 ICON_DEFAULT_FLOOR: Final = "mdi:selection-marker"  # "mdi:floor-plan"
 # Issue/repair translation keys. If you change these you MUST also update the key in the translations/xx.json files.
 REPAIR_SCANNER_WITHOUT_AREA = "scanner_without_area"
+REPAIR_SCANNER_SILENT = "scanner_silent"
+
+# A proxy that has sent nothing for this long is reported in a repair.
+SCANNER_SILENT_AFTER = 30 * 60  # seconds
+SCANNER_SILENT_CHECK_INTERVAL = 60  # seconds between checks for silent proxies
 
 # Device classes
 BINARY_SENSOR_DEVICE_CLASS = "connectivity"

@@ -90,8 +90,11 @@ from .const import (
     PRUNE_TIME_KNOWN_IRK,
     PRUNE_TIME_REDACTIONS,
     PRUNE_TIME_UNKNOWN_IRK,
+    REPAIR_SCANNER_SILENT,
     REPAIR_SCANNER_WITHOUT_AREA,
     SAVEOUT_COOLDOWN,
+    SCANNER_SILENT_AFTER,
+    SCANNER_SILENT_CHECK_INTERVAL,
     SIGNAL_DEVICE_NEW,
     SIGNAL_SCANNERS_CHANGED,
     UPDATE_INTERVAL,
@@ -183,6 +186,8 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         # When an advert last triggered an update attempt (see async_handle_advert).
         self._stamp_last_advert_update_attempt: float = 0
         self.stamp_last_prune: float = 0  # When we last pruned device list
+        self.stamp_started: float = monotonic_time_coarse()  # When Roomwise started, for the silent-proxy grace
+        self.stamp_last_silent_check: float = 0  # When we last looked for silent proxies
 
         self.member_uuids = {}
         self.company_uuids = {}
@@ -213,6 +218,11 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         self.have_floors: bool = self.init_floors()
 
         self._scanners_without_areas: list[str] | None = None  # Tracks any proxies that don't have an area assigned.
+        self._scanners_silent: list[str] | None = None  # Tracks any proxies that have gone quiet.
+        # Proxies that have unregistered from HA Bluetooth (an ESPHome proxy that drops off the
+        # network does this), by address, so they can still be reported as silent until they
+        # register again or are deleted from the device registry.
+        self._scanners_departed: dict[str, dict] = {}
 
         # Track the list of Private BLE devices, noting their entity id
         # and current "last address".
@@ -515,6 +525,10 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
         elif ev.data["action"] == "remove":
             device_found = False
+            for address, departed in list(self._scanners_departed.items()):
+                if departed["entry_id"] == device_id:
+                    _LOGGER.debug("Departed scanner %s removed, no longer watching it", departed["name"])
+                    del self._scanners_departed[address]
             for scanner in self.get_scanners:
                 if scanner.entry_id == device_id:
                     _LOGGER.debug(
@@ -774,6 +788,9 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Device Pruning (only runs periodically)
             self.prune_devices()
+
+            # Silent proxy repair (only runs periodically)
+            self._async_check_silent_scanners()
 
         finally:
             # end of async update
@@ -1641,6 +1658,7 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
         #
         for hascanner in self._hascanners:
             scanner_address = mac_norm(hascanner.source)
+            self._scanners_departed.pop(scanner_address, None)
             bermuda_scanner = self._get_or_create_device(scanner_address)
             bermuda_scanner.async_as_scanner_init(hascanner, force=force)
 
@@ -1658,8 +1676,17 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                 _scanners.remove(scanner_address)
         # Whatever's left are presumably no longer scanners.
         for address in _scanners:
-            _LOGGER.info("Demoting ex-scanner %s", self.devices[address].name)
-            self.devices[address].async_as_scanner_nolonger()
+            ex_scanner = self.devices[address]
+            _LOGGER.info("Demoting ex-scanner %s", ex_scanner.name)
+            # Keep watching it: a proxy that has dropped off the network is
+            # exactly the one the silent-proxy repair should report.
+            self._scanners_departed[address] = {
+                "name": ex_scanner.name,
+                "address": address,
+                "last_stamp": ex_scanner.last_seen,
+                "entry_id": ex_scanner.entry_id,
+            }
+            ex_scanner.async_as_scanner_nolonger()
 
     def _async_manage_repair_scanners_without_areas(self, scannerlist: list[str]):
         """
@@ -1688,6 +1715,61 @@ class BermudaDataUpdateCoordinator(DataUpdateCoordinator):
                     severity=ir.IssueSeverity.ERROR,
                     is_fixable=False,
                 )
+
+    def _async_check_silent_scanners(self):
+        """
+        Raise a repair for any scanners that have sent nothing for SCANNER_SILENT_AFTER.
+
+        Runs at most once every SCANNER_SILENT_CHECK_INTERVAL. Scanners that have
+        unregistered from HA Bluetooth are included, since a proxy that drops off
+        the network does exactly that.
+
+        Until Roomwise itself has been running for SCANNER_SILENT_AFTER nothing is
+        changed, so a restart neither raises a false alarm for a scanner not heard
+        yet nor clears (and un-ignores) a repair that is still valid.
+        """
+        nowstamp = monotonic_time_coarse()
+        if nowstamp - self.stamp_started <= SCANNER_SILENT_AFTER:
+            return
+        if self.stamp_last_silent_check > nowstamp - SCANNER_SILENT_CHECK_INTERVAL:
+            return
+        self.stamp_last_silent_check = nowstamp
+
+        stamp = nowstamp - SCANNER_SILENT_AFTER
+        _scanners = self.get_active_scanner_summary() + [
+            departed for address, departed in self._scanners_departed.items() if address not in self.scanner_list
+        ]
+        _silent_scanners = sorted(
+            (str(scanner["name"]) for scanner in _scanners if scanner["last_stamp"] < stamp), key=str.casefold
+        )
+        self._async_manage_repair_scanners_silent(_silent_scanners)
+
+    def _async_manage_repair_scanners_silent(self, scannerlist: list[str]):
+        """
+        Raise, update or clear the repair for scanners that have gone quiet.
+
+        scannerlist should contain a friendly name for each silent scanner. The
+        repair is only touched when that list changes; an empty list clears it.
+        """
+        if self._scanners_silent != scannerlist:
+            self._scanners_silent = scannerlist
+            if self._scanners_silent:
+                # Re-calling create updates the existing repair in place, so the
+                # list stays current and a user's "ignore" is kept.
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    REPAIR_SCANNER_SILENT,
+                    translation_key=REPAIR_SCANNER_SILENT,
+                    translation_placeholders={
+                        "minutes": str(SCANNER_SILENT_AFTER // 60),
+                        "scannerlist": "".join(f"- {name}\n" for name in self._scanners_silent),
+                    },
+                    severity=ir.IssueSeverity.WARNING,
+                    is_fixable=False,
+                )
+            else:
+                ir.async_delete_issue(self.hass, DOMAIN, REPAIR_SCANNER_SILENT)
 
     # *** Not required now that we don't reload for scanners.
     # @callback
