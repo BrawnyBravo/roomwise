@@ -25,7 +25,6 @@ DOCS_URL = "https://github.com/BrawnyBravo/roomwise"  # shown in the setup form 
 ISSUE_URL = f"{DOCS_URL}/issues"
 
 # Icons
-ICON = "mdi:format-quote-close"
 ICON_DEFAULT_AREA: Final = "mdi:land-plots-marker"
 ICON_DEFAULT_FLOOR: Final = "mdi:selection-marker"  # "mdi:floor-plan"
 # Issue/repair translation keys. If you change these you MUST also update the key in the translations/xx.json files.
@@ -37,7 +36,6 @@ SCANNER_SILENT_AFTER = 30 * 60  # seconds
 SCANNER_SILENT_CHECK_INTERVAL = 60  # seconds between checks for silent proxies
 
 # Device classes
-BINARY_SENSOR_DEVICE_CLASS = "connectivity"
 
 # Platforms
 PLATFORMS = [
