@@ -177,6 +177,10 @@
     "scanner_without_area": {
       "title": "Some Bluetooth Proxies don't have an AREA",
       "description": "Roomwise requires all bluetooth proxies to have a valid area assigned in order to work correctly. Assign an area by visiting each proxy's device page (via `Devices and Services`), and click the pencil icon in the top-right to assign an area. The following proxies are missing an area assignment:\n\n{scannerlist}"
+    },
+    "scanner_silent": {
+      "title": "Some Bluetooth Proxies have gone quiet",
+      "description": "Roomwise has not heard anything from the following Bluetooth proxies for more than {minutes} minutes, so the rooms they cover may not be tracked. Check that each proxy is powered on and connected to your network. This repair clears itself once they are heard again.\n\n{scannerlist}"
     }
   }
 }
