@@ -215,9 +215,7 @@ def discover(hass: HomeAssistant, coordinator: BermudaDataUpdateCoordinator) -> 
 
     areareg = ar.async_get(hass)
 
-    def area_name(area_id: str | None) -> str:
-        if area_id is None:
-            return ""
+    def area_name(area_id: str) -> str:
         area = areareg.async_get_area(area_id)
         return area.name if area is not None else area_id
 

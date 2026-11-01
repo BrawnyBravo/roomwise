@@ -555,7 +555,7 @@ class BermudaDevice:
             # The ha_scanner instance is new or we never had one, let's [re]init ourselves.
             if self._hascanner is not None:
                 # Ordinarily we'd expect init to have been called first, so...
-                _LOGGER.info("Received replacement ha_scanner object for %s", self.__repr__)
+                _LOGGER.info("Received replacement ha_scanner object for %s", self.__repr__())
             self.async_as_scanner_init(ha_scanner)
 
         # This needs to be recalculated each run, since we don't have access to _last_update
