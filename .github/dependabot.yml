@@ -1,14 +1,49 @@
 version: 2
 updates:
+  # Weekly, grouped, so tool updates arrive as a few PRs instead of one per package.
+  # Minor and patch groups merge themselves once every check passes
+  # (.github/workflows/dependabot-auto-merge.yaml); majors stay separate for a person.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: pip
     directory: "/.github/workflows"
     schedule:
-      interval: daily
+      interval: weekly
+    groups:
+      ci-tools:
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: pip
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
+    # Leave ranges like homeassistant>=2026.10.0 alone while the newest release still fits.
+    versioning-strategy: increase-if-necessary
+    ignore:
+      # Pinned to what Home Assistant's own usb component asks for (see requirements_test.txt);
+      # it moves with the Home Assistant pin, not on its own.
+      - dependency-name: serialx
+    groups:
+      # pytest-homeassistant-custom-component pins one Home Assistant release, so the two
+      # only work as a pair. A move to a new monthly release fails the CI-config test on
+      # purpose and waits for a person.
+      ha-pair:
+        patterns:
+          - homeassistant
+          - pytest-homeassistant-custom-component
+      tools:
+        # ruff is also pinned as the pre-commit rev, which Dependabot does not update,
+        # so its bump fails the CI-config test; keep it out so it cannot hold the group.
+        exclude-patterns:
+          - ruff
+        update-types:
+          - minor
+          - patch

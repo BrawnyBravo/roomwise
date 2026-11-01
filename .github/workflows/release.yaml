@@ -6,6 +6,13 @@ name: Release
 on:
   release:
     types: [published]
+  # Called by publish-release.yaml, whose own release does not trigger this file.
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Tag of the published release to build for
+        required: true
+        type: string
 
 permissions: {}
 
@@ -18,14 +25,17 @@ jobs:
       id-token: write
     env:
       ROOMWISE_ROOT_DIR: "${{ github.workspace }}/custom_components/roomwise"
+      RELEASE_TAG: "${{ inputs.tag_name || github.event.release.tag_name }}"
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set release version number in files
         shell: bash
         run: |
-          version="${{ github.event.release.tag_name }}"
+          version="${RELEASE_TAG}"
           version="${version,,}"
           version="${version#v}"
           # update const.py
@@ -49,4 +59,9 @@ jobs:
       - name: "Upload the ZIP file to the release"
         uses: softprops/action-gh-release@v3.0.3
         with:
-          files: ${{ env.ROOMWISE_ROOT_DIR }}/roomwise.zip
+          tag_name: ${{ env.RELEASE_TAG }}
+          # The signing step only attaches its own files on a release event, so the
+          # one-click path needs the signature uploaded here.
+          files: |
+            ${{ env.ROOMWISE_ROOT_DIR }}/roomwise.zip
+            ${{ env.ROOMWISE_ROOT_DIR }}/roomwise.zip.sigstore.json

@@ -1,0 +1,55 @@
+name: Publish release
+
+# One click (Actions > Publish release > Run workflow) publishes the release notes
+# Release Drafter has collected since the last release, then builds, signs and
+# uploads roomwise.zip. A release published by this workflow's token does not
+# start release.yaml by itself, so it is called here directly.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish-release
+
+jobs:
+  publish:
+    name: Publish the drafted release
+    runs-on: ubuntu-latest
+    # Release Drafter targets the branch the workflow runs from; only ever release main.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      tag_name: ${{ steps.publish.outputs.tag_name }}
+    steps:
+      - name: Stop if main has nothing new since the last release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          last=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          ahead=$(gh api "repos/$GITHUB_REPOSITORY/compare/${last}...${GITHUB_SHA}" --jq .ahead_by)
+          if [ "$ahead" -eq 0 ]; then
+            echo "::error::Nothing new on main since ${last}; no release made."
+            exit 1
+          fi
+
+      - name: Publish with Release Drafter
+        id: publish
+        uses: release-drafter/release-drafter@v7.10.0
+        with:
+          publish: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release_zip_file:
+    name: Build and upload roomwise.zip
+    needs: publish
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/release.yaml
+    with:
+      tag_name: ${{ needs.publish.outputs.tag_name }}
