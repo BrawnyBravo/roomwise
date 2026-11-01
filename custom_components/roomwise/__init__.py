@@ -84,7 +84,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> b
 async def async_migrate_entry(hass: HomeAssistant, config_entry: BermudaConfigEntry) -> bool:
     """Migrate previous config entries."""
     _LOGGER.debug("Migrating config from version %s.%s", config_entry.version, config_entry.minor_version)
-    _oldversion = f"{config_entry.version}.{config_entry.minor_version}"
 
     if config_entry.version == 3:  # it won't be.
         # Bogus version for now, wanted to placeholder the migrate_entries / unique_id thing.
@@ -109,9 +108,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: BermudaConfigEn
             hass.config_entries.async_update_entry(config_entry, unique_id=new_unique_id)
 
         return False
-
-    if f"{config_entry.version}.{config_entry.minor_version}" != _oldversion:
-        _LOGGER.info("Migrated config entry to version %s.%s", config_entry.version, config_entry.minor_version)
 
     return True
 
