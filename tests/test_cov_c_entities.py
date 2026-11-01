@@ -419,14 +419,13 @@ async def test_last_seen_sensor_keeps_unknown_when_nothing_stored(hass: HomeAssi
     assert device.area_last_seen is None
 
 
-async def test_sensor_platform_creates_each_device_once_and_adds_floors_later(hass: HomeAssistant):
-    listeners = []
+async def test_sensor_platform_creates_each_device_once(hass: HomeAssistant):
     coordinator = SimpleNamespace(
         get_scanners=[],
         scanner_list=[],
         have_floors=True,
         sensor_created=MagicMock(),
-        async_add_listener=lambda cb: listeners.append(cb) or (lambda: None),
+        async_add_listener=lambda cb: lambda: None,
     )
     entry = MagicMock(runtime_data=SimpleNamespace(coordinator=coordinator))
     added = []
@@ -457,10 +456,6 @@ async def test_sensor_platform_creates_each_device_once_and_adds_floors_later(ha
             ]
         )
         assert coordinator.sensor_created.call_count == 2  # told both times, built once
-
-        # A device set up before floors existed gets its Floor sensor later.
-        created_floors_missing = len([k for k in kinds if k == "BermudaSensorFloor"])
-        assert created_floors_missing == 1
 
 
 async def test_floor_sensor_is_added_to_devices_that_predate_floors(hass: HomeAssistant):

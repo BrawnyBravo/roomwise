@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -187,6 +188,8 @@ async def test_room_names_are_looked_up_for_rooms_the_scan_did_not_name(hass, se
     assert result["type"] == FlowResultType.SHOW_PROGRESS
     assert flow._autotune_found.area_names == {kitchen.id: "Kitchen"}
     flow._autotune_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await flow._autotune_task
     assert run.called
 
 
