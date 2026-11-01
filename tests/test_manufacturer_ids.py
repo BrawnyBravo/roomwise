@@ -55,7 +55,7 @@ async def test_manufacturer_yaml_is_parsed_off_the_event_loop():
 
 def test_manufacturer_yaml_uses_the_c_loader_when_available():
     """CSafeLoader is several times faster than the pure-Python loader."""
-    from custom_components.roomwise import coordinator as coordinator_module
+    from custom_components.roomwise import coordinator_manufacturer as coordinator_module
 
     expected = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     assert coordinator_module.YAML_LOADER is expected

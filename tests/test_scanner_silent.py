@@ -95,7 +95,7 @@ async def test_repair_is_not_rewritten_while_the_same_proxies_stay_quiet(hass: H
     _check_at(coordinator, clock, STARTED + 40 * 60)
     assert _issue(hass) is not None
 
-    with patch.object(coordinator_module.ir, "async_create_issue") as create:
+    with patch.object(ir, "async_create_issue") as create:
         for minute in range(1, 120):
             _check_at(coordinator, clock, STARTED + (40 + minute) * 60)
         create.assert_not_called()
@@ -126,7 +126,7 @@ async def test_reload_keeps_a_live_repair_and_its_ignore(hass: HomeAssistant, co
     proxy.last_seen = 0
 
     # During the grace period nothing is touched, not even deleted.
-    with patch.object(coordinator_module.ir, "async_delete_issue") as delete:
+    with patch.object(ir, "async_delete_issue") as delete:
         for minute in range(1, SCANNER_SILENT_AFTER // 60 + 1):
             _check_at(coordinator, clock, coordinator.stamp_started + minute * 60)
         delete.assert_not_called()
