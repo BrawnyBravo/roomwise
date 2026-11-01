@@ -18,9 +18,19 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_registry import async_migrate_entries
 
-from .const import _LOGGER, CONF_DEVICES, DOMAIN, DOMAIN_PRIVATE_BLE_DEVICE, PLATFORMS, STARTUP_MESSAGE
+from .const import (
+    _LOGGER,
+    CONF_DEVICES,
+    DOMAIN,
+    DOMAIN_PRIVATE_BLE_DEVICE,
+    PLATFORMS,
+    REPAIR_SCANNER_SILENT,
+    REPAIR_SCANNER_WITHOUT_AREA,
+    STARTUP_MESSAGE,
+)
 from .coordinator import BermudaDataUpdateCoordinator
 from .util import mac_math_offset, mac_norm
 
@@ -178,6 +188,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> 
         ):
             hass.services.async_remove(DOMAIN, "dump_devices")
     return unload_result
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> None:
+    """Clear our repairs when the integration is removed (not on unload, so a reload keeps them)."""
+    ir.async_delete_issue(hass, DOMAIN, REPAIR_SCANNER_SILENT)
+    ir.async_delete_issue(hass, DOMAIN, REPAIR_SCANNER_WITHOUT_AREA)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: BermudaConfigEntry) -> None:
