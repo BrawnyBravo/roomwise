@@ -1,0 +1,37 @@
+name: Dependabot auto-merge
+
+# Arms GitHub's auto-merge on Dependabot's minor and patch PRs. GitHub then merges
+# only after every required check on main passes, so a failing update waits for a
+# person. Majors are never armed. Needs "Allow auto-merge" on, and main requiring
+# the Linting, HACS, Hassfest and Run tests checks. The GraphQL call below only ever
+# arms auto-merge (unlike `gh pr merge --auto`, which merges at once when nothing is
+# required), so without those settings this job fails instead of merging.
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    name: Arm auto-merge
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'BrawnyBravo/roomwise'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Read the update
+        id: meta
+        uses: dependabot/fetch-metadata@v3.1.0
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Arm auto-merge for minor and patch updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-minor' || steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: |
+          gh api graphql \
+            -f query='mutation($id: ID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { clientMutationId } }' \
+            -f id="$PR_NODE_ID"
+        env:
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
