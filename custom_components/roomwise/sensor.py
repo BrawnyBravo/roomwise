@@ -16,6 +16,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
+from .area_explain import summary
 from .const import (
     _LOGGER,
     ADDR_TYPE_IBEACON,
@@ -471,9 +472,30 @@ class BermudaSensorScannerRangeRaw(BermudaSensorScannerRange):
 
 
 class BermudaSensorAreaSwitchReason(BermudaSensor):
-    """Sensor for area switch reason."""
+    """Sensor explaining why the device is in its current room."""
 
-    # _attr_entity_registry_enabled_default = False
+    # The state line is recorded; the detail attributes change on every
+    # update (distances, countdowns), so keep them out of the history database.
+    _unrecorded_attributes = frozenset(
+        {
+            "room",
+            "room_id",
+            "relay",
+            "distance_m",
+            "rssi",
+            "runner_up_relay",
+            "runner_up_room",
+            "runner_up_distance_m",
+            "runner_up_rssi",
+            "margin_m",
+            "reason",
+            "hold",
+            "hold_seconds_left",
+            "pending_room",
+            "pending_relay",
+            "recent_switches",
+        }
+    )
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
@@ -483,7 +505,7 @@ class BermudaSensorAreaSwitchReason(BermudaSensor):
 
     @property
     def name(self):
-        return "Area Switch Diagnostic"
+        return "Area Reason"
 
     @property
     def unique_id(self):
@@ -491,9 +513,32 @@ class BermudaSensorAreaSwitchReason(BermudaSensor):
 
     @property
     def native_value(self):
+        explain = self._device.area_explain
+        if explain:
+            return summary(explain)
         if self._device.diag_area_switch is not None:
             return self._device.diag_area_switch[:255]
         return None
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        return self._device.area_explain or None
+
+    def _state_fingerprint(self) -> tuple | None:
+        """
+        Write when the room, reason or hold changes, else at most every AREA_REASON_REFRESH s.
+
+        The distance and countdown attributes change on every update; comparing
+        them would write (and record) a state row every cycle per device.
+        """
+        explain = self._device.area_explain or {}
+        slow = tuple(repr(explain.get(key)) for key in AREA_REASON_SLOW_KEYS)
+        return (self.state, self.available, slow, int(monotonic_time_coarse() // AREA_REASON_REFRESH))
+
+
+# Explainer attributes that only change when the decision does (see _state_fingerprint).
+AREA_REASON_SLOW_KEYS = ("room_id", "relay", "reason", "hold", "pending_room", "pending_relay", "recent_switches")
+AREA_REASON_REFRESH = 30  # seconds between writes that only refresh the numbers
 
 
 class BermudaSensorAreaLastSeen(BermudaSensor, RestoreSensor):

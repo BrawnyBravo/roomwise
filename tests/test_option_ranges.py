@@ -16,6 +16,7 @@ from custom_components.roomwise.autotune_ha import current_settings
 from custom_components.roomwise.bermuda_advert import BermudaAdvert
 from custom_components.roomwise.config_flow import BermudaOptionsFlowHandler
 from custom_components.roomwise.const import (
+    CONF_AREA_DWELL,
     CONF_ATTENUATION,
     CONF_DEVICES,
     CONF_MAX_RADIUS,
@@ -24,8 +25,11 @@ from custom_components.roomwise.const import (
     CONF_SCANNER_MAX_RADIUS,
     CONF_SCANNERS,
     CONF_SMOOTHING_SAMPLES,
+    CONF_UNKNOWN_GRACE,
+    DEFAULT_AREA_DWELL,
     DEFAULT_ATTENUATION,
     DEFAULT_MAX_RADIUS,
+    DEFAULT_UNKNOWN_GRACE,
     DOMAIN,
     NAME,
 )
@@ -51,6 +55,10 @@ async def _globalopts(hass, entry):
         (CONF_SMOOTHING_SAMPLES, -3),
         (CONF_SMOOTHING_SAMPLES, 0),
         (CONF_REF_POWER, 10),
+        (CONF_AREA_DWELL, -1),
+        (CONF_AREA_DWELL, 3601),
+        (CONF_UNKNOWN_GRACE, -1),
+        (CONF_UNKNOWN_GRACE, 3601),
     ],
 )
 async def test_global_options_reject_values_that_break_the_maths(
@@ -74,6 +82,23 @@ async def test_global_options_accept_sensible_values(
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert setup_bermuda_entry.options[CONF_ATTENUATION] == 0.5
+
+
+async def test_global_options_accept_dwell_and_grace(
+    hass: HomeAssistant, bypass_get_data, setup_bermuda_entry: MockConfigEntry
+):
+    result = await _globalopts(hass, setup_bermuda_entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input=MOCK_OPTIONS_GLOBALS | {CONF_AREA_DWELL: 15, CONF_UNKNOWN_GRACE: 3600}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert setup_bermuda_entry.options[CONF_AREA_DWELL] == 15
+    assert setup_bermuda_entry.options[CONF_UNKNOWN_GRACE] == 3600
+
+
+def test_dwell_and_grace_defaults():
+    assert DEFAULT_AREA_DWELL == 0
+    assert DEFAULT_UNKNOWN_GRACE == 60
 
 
 async def test_calibration_step_1_rejects_zero_attenuation(hass: HomeAssistant):

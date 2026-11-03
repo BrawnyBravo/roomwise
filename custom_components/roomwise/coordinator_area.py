@@ -5,15 +5,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from homeassistant.const import STATE_NOT_HOME
+
+from .area_explain import HOLD_DWELL as EXPLAIN_DWELL
+from .area_explain import HOLD_GRACE as EXPLAIN_GRACE
+from .area_explain import (
+    NO_RECEIVER_REASON,
+    ROOM_CHANGED_REASON,
+    build_explain,
+    find_in_room,
+    plain_reason,
+)
 from .const import (
     AREA_EXIT_RADIUS_FACTOR,
     AREA_EXIT_SECONDS,
     AREA_MAX_AD_AGE,
+    CONF_AREA_DWELL,
     CONF_MAX_RADIUS,
     CONF_SCANNER_MAX_RADIUS,
+    CONF_UNKNOWN_GRACE,
+    DEFAULT_AREA_DWELL,
     DEFAULT_MAX_RADIUS,
+    DEFAULT_UNKNOWN_GRACE,
 )
 from .coordinator_clock import monotonic_time_coarse
+from .room_stability import HOLD_DWELL, HOLD_GRACE, remaining
 
 if TYPE_CHECKING:
     from .bermuda_advert import BermudaAdvert
@@ -156,6 +172,7 @@ class AreaMixin:
 
         tests = self.AreaTests()
         tests.device = device.name
+        win_reason: str | None = None  # why the last challenger to take over won
 
         for challenger in device.adverts.values():
             # Check each scanner and any time one is found to be closer / better than
@@ -197,7 +214,7 @@ class AreaMixin:
                 tests.scannername = (incumbent.name, challenger.name)
                 tests.areas = (incumbent.area_name or "", challenger.area_name or "")
                 tests.distance = (incumbent.rssi_distance, challenger.rssi_distance)
-                tests.reason = "WIN against an incumbent beyond its max radius"
+                tests.reason = win_reason = "WIN against an incumbent beyond its max radius"
                 incumbent = challenger
                 incumbent_held = False
                 continue
@@ -211,6 +228,7 @@ class AreaMixin:
                 # or closest_advert.hist_distance_by_interval is None
             ):
                 # Default Instawin!
+                win_reason = "WIN against no valid current receiver"
                 incumbent = challenger
                 continue
 
@@ -257,7 +275,7 @@ class AreaMixin:
                 and (tests.this_ad_age[0] > tests.this_ad_age[1] + 1)
                 and tests.distance[0] >= tests.distance[1]
             ):
-                tests.reason = "WIN awarded for same area, newer, closer advert"
+                tests.reason = win_reason = "WIN awarded for same area, newer, closer advert"
                 incumbent = challenger
                 continue
 
@@ -279,7 +297,7 @@ class AreaMixin:
                     tests.hist_min_max[1] < tests.hist_min_max[0]
                     and tests.pcnt_diff > pdiff_historical  # and we're significantly closer.
                 ):
-                    tests.reason = "WIN on historical min/max"
+                    tests.reason = win_reason = "WIN on historical min/max"
                     incumbent = challenger
                     continue
 
@@ -290,12 +308,58 @@ class AreaMixin:
                 continue
 
             # If we made it through all of that, we're winning, so far!
-            tests.reason = "WIN by not losing!"
+            tests.reason = win_reason = "WIN by not losing!"
 
             incumbent = challenger
 
-        if device.area_advert is not incumbent and tests.reason is not None:
+        picked_new = device.area_advert is not incumbent
+        if picked_new and tests.reason is not None:
             device.diag_area_switch = tests.sensortext()
 
-        # Apply the newly-found closest scanner (or apply None if we didn't find one)
-        device.apply_scanner_selection(incumbent)
+        # Apply the newly-found closest scanner (or apply None if we didn't find one).
+        # The device may hold its shown room for a while: see room_stability.
+        dwell = float(self.options.get(CONF_AREA_DWELL, DEFAULT_AREA_DWELL))
+        grace = float(self.options.get(CONF_UNKNOWN_GRACE, DEFAULT_UNKNOWN_GRACE))
+        if getattr(device, "zone", None) == STATE_NOT_HOME:
+            # The device has already been away longer than the tracker timeout:
+            # keeping its last room would contradict the "away" state.
+            grace = 0.0
+        old_room = device.area_id
+        device.apply_scanner_selection(incumbent, nowstamp, dwell, grace)
+        decision = device.room_hold_state
+        # What the device actually used: a kept receiver whose reading has timed
+        # out (no distance) counts as no receiver, same as in apply_scanner_selection.
+        selected = device.area_advert
+
+        # In a dwell hold the shown room has its own receiver (if any is in range);
+        # the one just picked is the pending receiver.
+        shown = selected
+        pending_relay = None
+        if decision == HOLD_DWELL:
+            shown = find_in_room(device, device.area_id, nowstamp, _range_limit)
+            pending_relay = selected.name
+
+        if selected is None:
+            reason = NO_RECEIVER_REASON
+        elif decision == HOLD_DWELL:
+            reason = f"Waiting {dwell:g} s before moving to {selected.area_name}"
+        elif picked_new and win_reason is not None:
+            reason = plain_reason(win_reason)
+        elif device.area_id != old_room:
+            reason = f"Stayed closest for {dwell:g} s" if dwell > 0 else ROOM_CHANGED_REASON
+        else:
+            reason = None  # kept the current room
+        pending = device.room_hold.pending_area_id if decision == HOLD_DWELL else None
+        device.area_explain = build_explain(
+            device,
+            shown,
+            nowstamp,
+            _range_limit,
+            reason,
+            {HOLD_DWELL: EXPLAIN_DWELL, HOLD_GRACE: EXPLAIN_GRACE}.get(decision),
+            remaining(device.room_hold, decision, nowstamp, dwell, grace),
+            device.area_explain,
+            pending_room=self.resolve_area_name(pending) if pending is not None else None,
+            pending_relay=pending_relay,
+            shown_area_id=device.area_id,
+        )
