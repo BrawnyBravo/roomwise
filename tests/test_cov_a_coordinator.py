@@ -31,6 +31,8 @@ from custom_components.roomwise.const import (
 )
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
+from .area_fakes import fake_device
+
 Coordinator = BermudaDataUpdateCoordinator
 
 MAC_A = "aa:bb:cc:dd:ee:01"
@@ -632,14 +634,7 @@ def _advert(scanner, area, distance, stamp, history=None, **kwargs):
 def _decide(adverts, incumbent=None):
     """Run the real area decision once and return what it applied (None = unplaced) plus the device."""
     chosen = {}
-    device = SimpleNamespace(
-        name="device",
-        area_advert=adverts.get(incumbent),
-        area_beyond_range=None,
-        adverts=adverts,
-        diag_area_switch=None,
-        apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
-    )
+    device = fake_device(adverts, area_advert=adverts.get(incumbent), chosen=chosen)
     coord = SimpleNamespace(
         options={"max_area_radius": 20.0, "scanner_max_radius": {}},
         AreaTests=Coordinator.AreaTests,

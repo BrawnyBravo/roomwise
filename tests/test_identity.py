@@ -11,6 +11,8 @@ from custom_components.roomwise.bermuda_advert import BermudaAdvert
 from custom_components.roomwise.bermuda_device import BermudaDevice
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
+from .area_fakes import fake_device
+
 
 def _scanner(address, area):
     return MagicMock(
@@ -46,14 +48,7 @@ def test_moving_between_receivers_records_the_area_switch():
     kitchen = _advert(_scanner("aa:bb:cc:dd:ee:10", "Kitchen"), 6.0)
     office = _advert(_scanner("aa:bb:cc:dd:ee:20", "Office"), 1.0)  # much closer: wins outright
     chosen = {}
-    device = SimpleNamespace(
-        name="device",
-        area_advert=kitchen,
-        area_beyond_range=None,
-        adverts={("d", "k"): kitchen, ("d", "o"): office},
-        diag_area_switch=None,
-        apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
-    )
+    device = fake_device({("d", "k"): kitchen, ("d", "o"): office}, area_advert=kitchen, chosen=chosen)
     coord = SimpleNamespace(options={"max_area_radius": 20.0}, AreaTests=BermudaDataUpdateCoordinator.AreaTests)
     BermudaDataUpdateCoordinator._refresh_area_by_min_distance(coord, device)  # noqa: SLF001
     assert chosen["adv"] is office
