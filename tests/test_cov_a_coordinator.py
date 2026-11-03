@@ -16,6 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.roomwise.coordinator as coordinator_module
+import custom_components.roomwise.coordinator_prune as prune_module
 from custom_components.roomwise.const import (
     ADDR_TYPE_PRIVATE_BLE_DEVICE,
     AREA_MAX_AD_AGE,
@@ -388,7 +389,7 @@ def test_prune_clears_expired_redaction_data_only(monkeypatch):
 
 def test_prune_over_quota_drops_the_oldest_unknown_private_addresses_first(monkeypatch):
     monkeypatch.setattr(coordinator_module, "monotonic_time_coarse", lambda: NOW)
-    monkeypatch.setattr(coordinator_module, "PRUNE_MAX_COUNT", 2)
+    monkeypatch.setattr(prune_module, "PRUNE_MAX_COUNT", 2)
     oldest = _stub("4a:00:00:00:00:01", NOW - 230, BDADDR_TYPE_RANDOM_RESOLVABLE)
     older = _stub("4a:00:00:00:00:02", NOW - 210, BDADDR_TYPE_RANDOM_RESOLVABLE)
     fresh = _stub("4a:00:00:00:00:03", NOW - 5, BDADDR_TYPE_RANDOM_RESOLVABLE)

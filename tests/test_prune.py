@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import custom_components.roomwise.coordinator as coordinator_module
+import custom_components.roomwise.coordinator_prune as prune_module
 from custom_components.roomwise.const import (
     BDADDR_TYPE_NOT_MAC48,
     BDADDR_TYPE_OTHER,
@@ -96,7 +97,7 @@ def test_prune_quota_prunes_oldest_up_to_shortfall(monkeypatch, prunable_count, 
     were fewer prunables than the shortfall) and sliced one short of the shortfall.
     """
     monkeypatch.setattr(coordinator_module, "monotonic_time_coarse", lambda: NOW)
-    monkeypatch.setattr(coordinator_module, "PRUNE_MAX_COUNT", quota)
+    monkeypatch.setattr(prune_module, "PRUNE_MAX_COUNT", quota)
     devices = {
         "tracked": _dev("tracked", NOW, "static", create_sensor=True),
         "also_tracked": _dev("also_tracked", NOW, "static", create_sensor=True),
