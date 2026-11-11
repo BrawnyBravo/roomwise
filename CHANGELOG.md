@@ -2,8 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- Two new options in Global Options keep a device's room steady. **Room change delay** (default 0, off) makes a
+  device stay closer to a new room's receiver for that many seconds before its room changes. **Keep room on signal
+  loss** keeps showing the last room for that many seconds when no receiver is in range, before showing unknown.
+  The Area Reason sensor shows when a room is being held (the time left is in its attributes).
+
 ### Changed
 
+- Keep room on signal loss defaults to 60 seconds, so a short weak-signal dropout no longer flips a device to unknown
+  and back. Set it to 0 to get the old behaviour (unknown straight away). A device that is already away (not heard
+  for longer than the away timeout, 30 seconds by default) is not held.
+- "Area Switch Diagnostic" is now "Area Reason". Its state is a short plain-English sentence (the room, the receiver
+  behind it and why, or what it is waiting for), and the details (distances, signal strength, the next-best room,
+  hold countdown, recent room changes) are in its attributes. It is now updated whenever the device moves from
+  one receiver to another, not only when it becomes placed or unplaced. It stays disabled by default.
 - Roomwise now needs Home Assistant 2026.10.0 or newer (tested on 2026.10.1). HACS will not offer this version to older installs.
 
 ### Fixed
@@ -26,8 +40,6 @@
   interval at least 0 s, smoothing samples 1 to 1000, attenuation 0.5 to 10, reference power -127 to 0 dBm.
 - `dump_devices` with `configured_devices` now includes Private BLE devices (phones and watches) and their current
   addresses; before, it matched them by the wrong key and left them out.
-- The "area switch" diagnostic is recorded again when a device moves from one receiver to another (it was only
-  updated when a device became placed or unplaced).
 - Deleting a tracked device (or iBeacon) from its device page now sticks: it is also removed from Select Devices, so
   it no longer comes back with all its entities after the next restart. Private BLE devices (phones and watches)
   are tracked automatically, so the delete button now says no and the log explains to remove them in the Private

@@ -10,6 +10,8 @@ import custom_components.roomwise.const
 
 MOCK_OPTIONS = {
     custom_components.roomwise.const.CONF_MAX_RADIUS: 20.0,
+    custom_components.roomwise.const.CONF_AREA_DWELL: 0.0,
+    custom_components.roomwise.const.CONF_UNKNOWN_GRACE: 60.0,
     custom_components.roomwise.const.CONF_MAX_VELOCITY: 3.0,
     custom_components.roomwise.const.CONF_DEVTRACK_TIMEOUT: 30,
     custom_components.roomwise.const.CONF_UPDATE_INTERVAL: 10.0,
@@ -21,6 +23,8 @@ MOCK_OPTIONS = {
 
 MOCK_OPTIONS_GLOBALS = {
     custom_components.roomwise.const.CONF_MAX_RADIUS: 20.0,
+    custom_components.roomwise.const.CONF_AREA_DWELL: 0.0,
+    custom_components.roomwise.const.CONF_UNKNOWN_GRACE: 60.0,
     custom_components.roomwise.const.CONF_MAX_VELOCITY: 3.0,
     custom_components.roomwise.const.CONF_DEVTRACK_TIMEOUT: 30,
     custom_components.roomwise.const.CONF_UPDATE_INTERVAL: 10.0,

@@ -13,8 +13,9 @@ for them, so we can use them to contribute towards measurements.
 from __future__ import annotations
 
 import binascii
+import dataclasses
 import re
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant.components.bluetooth import (
@@ -52,6 +53,7 @@ from .const import (
     METADEVICE_PRIVATE_BLE_DEVICE,
     METADEVICE_TYPE_IBEACON_SOURCE,
 )
+from .room_stability import APPLY, HOLD_DWELL, HOLD_GRACE, RoomHold, decide
 from .util import irk_tag, mac_math_offset, mac_norm, name_is_address
 
 if TYPE_CHECKING:
@@ -129,6 +131,11 @@ class BermudaDevice:
         # (scanner address, since when) while area_advert reads beyond its max radius
         # but is kept by the exit margin (coordinator._refresh_area_by_min_distance).
         self.area_beyond_range: tuple[str, float] | None = None
+        # Dwell / unknown-grace timers (room_stability), the last decision made, and the
+        # room explainer's last result (filled in elsewhere).
+        self.room_hold: RoomHold = RoomHold()
+        self.room_hold_state: str | None = None
+        self.area_explain: dict | None = None
 
         self.floor: fr.FloorEntry | None = None
         self.floor_id: str | None = None
@@ -689,27 +696,58 @@ class BermudaDevice:
             # new measurement(s) immediately.
             self.ref_power_changed = monotonic_time_coarse()
 
-    def apply_scanner_selection(self, bermuda_advert: BermudaAdvert | None):
+    def apply_scanner_selection(
+        self,
+        bermuda_advert: BermudaAdvert | None,
+        nowstamp: float | None = None,
+        dwell: float = 0,
+        grace: float = 0,
+    ):
         """
         Given a BermudaAdvert entry, apply the distance and area attributes
         from it to this device.
 
         Used to apply a "winning" scanner's data to the device for setting closest Area.
+
+        `dwell` and `grace` (seconds) hold the shown room steady, see room_stability.
+        The selection itself is always kept in area_advert: it is the algorithm's
+        state (next update's incumbent), whatever room is currently shown.
         """
         old_area = self.area_name
-        if bermuda_advert is not None and bermuda_advert.rssi_distance is not None:
-            # We found a winner
-            self.area_advert = bermuda_advert
-            self._update_area_and_floor(bermuda_advert.area_id)
-            self.area_distance = bermuda_advert.rssi_distance
-            self.area_rssi = bermuda_advert.rssi
-            self.area_last_seen = self.area_name
-            self.area_last_seen_id = self.area_id
-            self.area_last_seen_icon = self.area_icon
-        else:
-            # Not close to any scanners, or closest scanner has timed out!
-            self.area_advert = None
-            self._update_area_and_floor(None)
+        selected = bermuda_advert if bermuda_advert is not None and bermuda_advert.rssi_distance is not None else None
+        self.area_advert = selected
+        decision = decide(
+            self.room_hold,
+            self.area_id,
+            selected.area_id if selected is not None else None,
+            monotonic_time_coarse() if nowstamp is None else nowstamp,
+            dwell,
+            grace,
+        )
+        self.room_hold_state = decision
+
+        if decision == APPLY:
+            if selected is not None:
+                # We found a winner
+                self._update_area_and_floor(selected.area_id)
+                self.area_distance = selected.rssi_distance
+                self.area_rssi = selected.rssi
+                self.area_last_seen = self.area_name
+                self.area_last_seen_id = self.area_id
+                self.area_last_seen_icon = self.area_icon
+            else:
+                # Not close to any scanners, or closest scanner has timed out!
+                self._update_area_and_floor(None)
+                self.area_distance = None
+                self.area_rssi = None
+        elif decision == HOLD_DWELL:
+            # Keep the shown room; the numbers describe the receiver now picked
+            # (a different room was picked, so there is a selection).
+            picked = cast("BermudaAdvert", selected)
+            self.area_distance = picked.rssi_distance
+            self.area_rssi = picked.rssi
+        elif decision == HOLD_GRACE:
+            # Keep the shown room; there is no reading to show.
             self.area_distance = None
             self.area_rssi = None
 
@@ -903,6 +941,9 @@ class BermudaDevice:
             if val in [self._hascanner, self.area, self.floor, self.ar, self.fr]:
                 if hasattr(val, "__repr__"):
                     out[var] = val.__repr__()
+                continue
+            if var == "room_hold":
+                out[var] = dataclasses.asdict(val)
                 continue
             if val is self.adverts:
                 advertout = {}
