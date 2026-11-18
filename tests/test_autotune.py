@@ -15,6 +15,8 @@ from custom_components.roomwise.bermuda_advert import BermudaAdvert
 from custom_components.roomwise.const import AREA_EXIT_RADIUS_FACTOR
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
+from .area_fakes import fake_device
+
 # A synthetic single-storey house: four rooms on a 6 m grid, one scanner in each.
 ROOMS = {"Kitchen": (0.0, 0.0), "Office": (6.0, 0.0), "Lounge": (0.0, 6.0), "Bedroom": (6.0, 6.0)}
 SCANNERS = [at.Scanner(f"scanner_{room.lower()}", room, f"{room} proxy") for room in ROOMS]
@@ -93,16 +95,17 @@ def _run_coordinator_area_rule(
             scanner_device=SimpleNamespace(last_seen=now),
         )
     chosen = {}
-    device = SimpleNamespace(
-        name="landmark",
-        area_advert=adverts.get(incumbent) if incumbent else None,
-        area_beyond_range=None,
-        adverts=adverts,
-        diag_area_switch=None,
-        apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
+    device = fake_device(
+        adverts, area_advert=adverts.get(incumbent) if incumbent else None, name="landmark", chosen=chosen
     )
+    # Auto-tune scores stationary medians, so the display holds (dwell, unknown grace) are off here.
     fake_coord = SimpleNamespace(
-        options={"max_area_radius": settings.max_radius, "scanner_max_radius": dict(settings.radii)},
+        options={
+            "max_area_radius": settings.max_radius,
+            "scanner_max_radius": dict(settings.radii),
+            "area_dwell_seconds": 0,
+            "area_unknown_grace_seconds": 0,
+        },
         AreaTests=BermudaDataUpdateCoordinator.AreaTests,
     )
     BermudaDataUpdateCoordinator._refresh_area_by_min_distance(fake_coord, device)

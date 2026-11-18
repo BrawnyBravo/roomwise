@@ -181,6 +181,17 @@ CONF_MAX_RADIUS, DEFAULT_MAX_RADIUS = "max_area_radius", 20
 CONF_SCANNER_MAX_RADIUS = "scanner_max_radius"  # {scanner address: metres}, overrides CONF_MAX_RADIUS per scanner
 DOCS[CONF_MAX_RADIUS] = "For simple area-detection, max radius from receiver"
 
+CONF_AREA_DWELL, DEFAULT_AREA_DWELL = "area_dwell_seconds", 0
+DOCS[CONF_AREA_DWELL] = (
+    "Seconds a device must stay closer to a new room's receiver before its room",
+    "changes. 0 changes straight away.",
+)
+CONF_UNKNOWN_GRACE, DEFAULT_UNKNOWN_GRACE = "area_unknown_grace_seconds", 60
+DOCS[CONF_UNKNOWN_GRACE] = (
+    "Seconds to keep showing the last room when no receiver is in range, before",
+    "showing unknown. Bridges short weak-signal dropouts. 0 shows unknown at once.",
+)
+
 CONF_MAX_VELOCITY, DEFAULT_MAX_VELOCITY = "max_velocity", 3
 DOCS[CONF_MAX_VELOCITY] = (
     "In metres per second - ignore readings that imply movement away faster than",
@@ -216,6 +227,8 @@ DOCS[CONF_SMOOTHING_SAMPLES] = (
 # radius of 0 or less has no logarithm) or silently break it.
 OPTION_RANGES: Final[dict[str, tuple[float | None, float | None]]] = {
     CONF_MAX_RADIUS: (0.1, None),
+    CONF_AREA_DWELL: (0, 3600),
+    CONF_UNKNOWN_GRACE: (0, 3600),
     CONF_MAX_VELOCITY: (0.1, None),
     CONF_DEVTRACK_TIMEOUT: (1, None),
     CONF_UPDATE_INTERVAL: (0, None),
@@ -225,6 +238,8 @@ OPTION_RANGES: Final[dict[str, tuple[float | None, float | None]]] = {
 }
 OPTION_DEFAULTS: Final[dict[str, float]] = {
     CONF_MAX_RADIUS: DEFAULT_MAX_RADIUS,
+    CONF_AREA_DWELL: DEFAULT_AREA_DWELL,
+    CONF_UNKNOWN_GRACE: DEFAULT_UNKNOWN_GRACE,
     CONF_MAX_VELOCITY: DEFAULT_MAX_VELOCITY,
     CONF_DEVTRACK_TIMEOUT: DEFAULT_DEVTRACK_TIMEOUT,
     CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,

@@ -177,6 +177,14 @@ from the room next door. Auto-tune listens to devices that never move and whose 
 works out a per-proxy signal offset (the same setting as **Calibration 2**) that puts as many of them
 as possible in their own room.
 
+Two settings in Global Options keep a room steady. **Keep room on signal loss** (default 60 seconds)
+keeps the last room for that long when no receiver is in range, before showing unknown; set 0 to show
+unknown at once. A device that has left still clears promptly: once its tracker says away (not heard for
+longer than the away timeout, 30 s by default) the room is not held. **Room change delay** (default 0, off)
+makes a device stay closer to a new room's receiver for that many seconds before its room changes. While a room is held, the Distance, Nearest Scanner and RSSI sensors describe
+the receiver actually picked (during a delay) or are unknown (during signal loss), so they can differ from
+the room shown. The Area Reason sensor (disabled by default) explains the current state.
+
 If a device sits in a room that has no proxy of its own, the best Roomwise can do is leave it
 unplaced rather than put it in the wrong room. Where that helps, auto-tune may also propose a
 smaller **range limit for one proxy** (never larger than the global max radius, never below 2 m, and

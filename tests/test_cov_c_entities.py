@@ -57,6 +57,7 @@ def _device(**over):
         "area_rssi": -70,
         "area_distance": None,
         "diag_area_switch": None,
+        "area_explain": None,
         "zone": None,
         "name_by_user": None,
         "get_scanner": lambda _addr: None,
@@ -353,11 +354,12 @@ async def test_per_scanner_range_sensors_when_scanner_has_not_heard_us(hass: Hom
 
 async def test_area_switch_diagnostic_sensor(hass: HomeAssistant):
     ent = _make(sensor.BermudaSensorAreaSwitchReason, hass)
-    assert ent.name == "Area Switch Diagnostic"
+    assert ent.name == "Area Reason"
     assert ent.unique_id == f"{ADDR}_area_switch_reason"
     assert ent.entity_registry_enabled_default is False
     assert ent._attr_entity_category == EntityCategory.DIAGNOSTIC
     assert ent.native_value is None
+    assert ent.extra_state_attributes is None
     long = _make(sensor.BermudaSensorAreaSwitchReason, hass, _device(diag_area_switch="x" * 400))
     assert long.native_value == "x" * 255
 

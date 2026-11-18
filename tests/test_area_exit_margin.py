@@ -26,6 +26,8 @@ from custom_components.roomwise.const import AREA_EXIT_RADIUS_FACTOR, AREA_EXIT_
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 from custom_components.roomwise.util import rssi_to_metres
 
+from .area_fakes import fake_device
+
 REF_POWER = -55.0
 ATTENUATION = 3.0
 RADIUS = 6.0  # metres; about -78.3 dBm at these settings
@@ -90,14 +92,7 @@ def _hear(advert: SimpleNamespace, rssi: float, now: float) -> None:
 
 
 def _new_device(adverts: dict) -> SimpleNamespace:
-    device = SimpleNamespace(name="device", adverts=adverts, area_advert=None, diag_area_switch=None)
-    device.area_beyond_range = None
-
-    def apply(adv):
-        device.area_advert = adv if adv is not None and adv.rssi_distance is not None else None
-
-    device.apply_scanner_selection = apply
-    return device
+    return fake_device(adverts)
 
 
 def _coord(scanner_radius=None) -> SimpleNamespace:

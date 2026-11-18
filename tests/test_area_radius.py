@@ -8,6 +8,8 @@ from bluetooth_data_tools import monotonic_time_coarse
 
 from custom_components.roomwise.coordinator import BermudaDataUpdateCoordinator
 
+from .area_fakes import fake_device
+
 GLOBAL_RADIUS = 20.0
 
 
@@ -27,14 +29,7 @@ def _advert(scanner, area, distance, now):
 def _select(adverts, incumbent_scanner=None, scanner_radius=None, max_radius=GLOBAL_RADIUS):
     """Run the real area loop once and return the scanner chosen (None = unplaced)."""
     chosen = {}
-    device = SimpleNamespace(
-        name="device",
-        area_advert=adverts.get(incumbent_scanner),
-        area_beyond_range=None,
-        adverts=adverts,
-        diag_area_switch=None,
-        apply_scanner_selection=lambda adv: chosen.setdefault("adv", adv),
-    )
+    device = fake_device(adverts, area_advert=adverts.get(incumbent_scanner), chosen=chosen)
     coord = SimpleNamespace(
         options={"max_area_radius": max_radius, "scanner_max_radius": dict(scanner_radius or {})},
         AreaTests=BermudaDataUpdateCoordinator.AreaTests,

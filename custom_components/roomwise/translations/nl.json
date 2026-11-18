@@ -33,6 +33,8 @@
         "title": "Globale instellingen",
         "data": {
           "max_area_radius": "Maximale radius in meters voor eenvoudige ruimte detectie",
+          "area_dwell_seconds": "Vertraging ruimtewissel (seconden)",
+          "area_unknown_grace_seconds": "Ruimte behouden bij signaalverlies (seconden)",
           "max_velocity": "Maximale snelheid in meter per seconde - negeer metingen met snellere afstandstoename dan deze limiet.",
           "devtracker_nothome_timeout": "Devtracker Timeout - Tijd in seconden om een apparaat als \"Afwezig\" te beschouwen.",
           "update_interval": "Update Interval - Hoe vaak (in seconden) de sensormetingen worden bijgewerkt.",
@@ -42,7 +44,9 @@
           "configured_devices": "Geconfigureerde apparaten - Selecteer welke Bluetooth-apparaten of beacons moeten worden gevolgd met sensoren."
         },
         "data_description": {
-          "max_area_radius": "Met de eenvoudige `RUIMTE` functie wordt een apparaat gemarkeerd alszijnde in de ruimte van de dichtsbijzijnde scanner, als het zich binnen deze straal bevindt. \nAls deze waarde te te klein wordt ingesteld zullen apparaten als `Onbekend` gemarkeerd worden bij verplaatsing tussen scanners. \nAls deze waarde te groot wordt ingesteld zullen apparaten altijd verschijnen als in hun dichtsbijzijnde ruimte.",
+          "max_area_radius": "Met de eenvoudige `RUIMTE` functie wordt een apparaat gemarkeerd alszijnde in de ruimte van de dichtsbijzijnde scanner, als het zich binnen deze straal bevindt. \nAls deze waarde te klein wordt ingesteld zullen apparaten als `Onbekend` gemarkeerd worden bij verplaatsing tussen scanners, zodra de tijd van \"Ruimte behouden bij signaalverlies\" (standaard 60 seconden) verstreken is. \nAls deze waarde te groot wordt ingesteld zullen apparaten altijd verschijnen als in hun dichtsbijzijnde ruimte.",
+          "area_dwell_seconds": "Een apparaat moet zo lang dichter bij de scanner van een nieuwe ruimte blijven voordat de ruimte wijzigt. 0 = direct wijzigen.",
+          "area_unknown_grace_seconds": "Als er geen scanner binnen bereik is, blijft de laatste ruimte zo lang zichtbaar voordat Onbekend wordt getoond. Overbrugt korte onderbrekingen door zwak signaal.",
           "max_velocity": "Als uit een meting blijkt dat een apparaat sneller weg beweegt dan dit, wordt die meting genegeerd. 3m/s (10km/h) is goed.\nMensen lopen normaal gesproken met een snelheid van 1,4 m/s. Maar als ze een schaar vasthouden, bewegen ze met een snelheid van 3 m/s.",
           "devtracker_nothome_timeout": "Hoe snel device_tracker-entiteiten als `not_home` worden gemarkeerd nadat er geen advertenties meer worden gezien. 30 tot 300 seconden is waarschijnlijk goed.",
           "update_interval": "Afstandsafnames worden nog steeds onmiddellijk worden geactiveerd, maar afstandstoenames worden hiermee beperkt om de groei van de database te verminderen.",

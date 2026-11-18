@@ -38,6 +38,8 @@
         "title": "Global settings",
         "data": {
           "max_area_radius": "Max radius in metres for simple AREA detection",
+          "area_dwell_seconds": "Room change delay (seconds)",
+          "area_unknown_grace_seconds": "Keep room on signal loss (seconds)",
           "max_velocity": "Max Velocity in metres per second - ignore readings that imply movement away faster than this limit. 3m/s (10km/h) is good.",
           "devtracker_nothome_timeout": "Devtracker Timeout in seconds to consider a device as `Not Home`.",
           "update_interval": "Update Interval - How often (in seconds) to update sensor readings.",
@@ -47,7 +49,9 @@
           "configured_devices": "Configured Devices - Select which Bluetooth devices or Beacons to track with Sensors."
         },
         "data_description": {
-          "max_area_radius": "In the simple `AREA` feature, a device will be marked as being in the AREA of it's closest receiver, if inside this radius. If you set it small, devices will go to `unknown` between receivers, but if large devices will always appear as in their closest Area.",
+          "max_area_radius": "In the simple `AREA` feature, a device will be marked as being in the AREA of it's closest receiver, if inside this radius. If you set it small, devices will go to `unknown` between receivers once the \"Keep room on signal loss\" time (60 seconds by default) has passed, but if large devices will always appear as in their closest Area.",
+          "area_dwell_seconds": "A device must stay closer to a new room's receiver for this long before its room changes. 0 = change straight away.",
+          "area_unknown_grace_seconds": "When no receiver is in range, keep showing the last room for this long before showing unknown. Bridges short weak-signal dropouts.",
           "max_velocity": "If a reading implies a device is moving away faster than this, we ignore that reading. Humans normally walk at 1.4m/s, if they're holding scissors they move at 3m/s.",
           "devtracker_nothome_timeout": "How quickly to mark device_tracker entities as `not_home` after we stop seeing advertisements. 30 to 300 seconds is probably good.",
           "update_interval": "Shortening distances will still trigger immediately, but increasing distances will be rate limited by this to reduce how much your database grows.",
